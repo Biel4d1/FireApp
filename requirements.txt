@@ -1,0 +1,12 @@
+Flask==3.0.0
+Flask-CORS==4.0.0
+PyJWT==2.8.0
+Werkzeug==3.0.1
+opencv-python
+transformers>=4.0.0
+torch
+Pillow
+psycopg2-binary
+# Redis + RQ for background task queueing and in-memory counters
+redis>=4.0
+rq>=1.0

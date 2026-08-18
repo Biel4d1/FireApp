@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  # The Flask Web App
+  web:
+    build: .
+    user: "0:0"
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/backend:z
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET=185fca44635612d1eeb60929f72254a184fcb1ae4e960d6c54375dee0e93babd
+      - DATABASE_URL=postgresql://user:password@db:5432/smartvideos
+    depends_on:
+      - redis
+      - db
+
+  # The Worker (Runs your background AI/FFmpeg tasks)
+  worker:
+    build: .
+    user: "0:0"
+    command: python worker.py  
+    volumes:
+      - .:/backend:z
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://user:password@db:5432/smartvideos
+    depends_on:
+      - redis
+      - db
+
+  # The Redis Cache/Queue
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  # The PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=smartvideos
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
