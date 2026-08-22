@@ -31,7 +31,18 @@ services:
       - redis
       - db
 
-  # Cloudflare Tunnel
+  db-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: sh -c "while true; do ./sync_db; sleep 300; done"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://user:password@db:5432/smartvideos
+    depends_on:
+      - redis
+      - db
+
   tunnel:
     image: cloudflare/cloudflared:latest
     container_name: fireapp_tunnel
