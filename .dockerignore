@@ -21,3 +21,5 @@ __pycache__/
 .git/
 .env
 ffmpeg-static/
+uploads/
+sample_videos/

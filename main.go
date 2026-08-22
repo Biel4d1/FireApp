@@ -105,19 +105,21 @@ func initRedis() *redis.Client {
 }
 
 func syncRedisFromDB() {
-	if rdb == nil {
-		return
-	}
-	rows, err := db.Query("SELECT video_id, user_id FROM likes")
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var videoID, userID int
-			if err := rows.Scan(&videoID, &userID); err == nil {
-				rdb.SAdd(ctx, fmt.Sprintf("video:%d:likes", videoID), strconv.Itoa(userID))
-			}
-		}
-	}
+	if rdb != nil {
+    keyLikes := fmt.Sprintf("video:%d:likes", req.VideoID)
+    keyDislikes := fmt.Sprintf("video:%d:dislikes", req.VideoID)
+    uidStr := strconv.Itoa(userID)
+
+    if rdb.SIsMember(ctx, keyLikes, uidStr).Val() {
+        rdb.SRem(ctx, keyLikes, uidStr)
+        db.Exec("DELETE FROM likes WHERE user_id = $1 AND video_id = $2", userID, req.VideoID)
+    } else {
+        rdb.SAdd(ctx, keyLikes, uidStr)
+        rdb.SRem(ctx, keyDislikes, uidStr)
+        db.Exec("INSERT INTO likes (user_id, video_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", userID, req.VideoID)
+        db.Exec("DELETE FROM dislikes WHERE user_id = $1 AND video_id = $2", userID, req.VideoID)
+    }
+}
 
 	rowsDislikes, err := db.Query("SELECT video_id, user_id FROM dislikes")
 	if err == nil {
