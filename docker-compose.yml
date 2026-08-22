@@ -1,14 +1,12 @@
-version: '3.8'
-
 services:
-  # The Flask Web App
   web:
-    build: .
-    user: "0:0"
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "5000:5000"
     volumes:
-      - .:/backend:z
+      - /mnt/storage/smartvideos/uploads:/backend/uploads
     environment:
       - REDIS_URL=redis://redis:6379/0
       - JWT_SECRET=185fca44635612d1eeb60929f72254a184fcb1ae4e960d6c54375dee0e93babd
@@ -17,13 +15,15 @@ services:
       - redis
       - db
 
-  # The Worker (Runs your background AI/FFmpeg tasks)
   worker:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
     user: "0:0"
-    command: python worker.py  
+    command: python worker.py
     volumes:
       - .:/backend:z
+      - /mnt/storage/smartvideos/uploads:/app/uploads
     environment:
       - REDIS_URL=redis://redis:6379/0
       - DATABASE_URL=postgresql://user:password@db:5432/smartvideos
@@ -31,15 +31,25 @@ services:
       - redis
       - db
 
-  # The Redis Cache/Queue
+  # Cloudflare Tunnel
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: fireapp_tunnel
+    command: tunnel --no-autoupdate run --token eyJhIjoiMjY0MzgyOTE3OWM0ZDM3YjNjYTllODU3YWE4ODE4YmYiLCJ0IjoiZGU5MGExYjgtZDI1My00Yzc5LWE2OTktZjA2MWNhMTk4ZjhkIiwicyI6Ik0yRTRORFZpT1dVdE9USXhZUzAwTURCbUxUaG1NakV0WlRKaU1Ea3dNV0UzTWpVeCJ9
+    restart: always
+    depends_on:
+      - web
+
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
 
-  # The PostgreSQL Database
   db:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     environment:
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=password
@@ -49,3 +59,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:

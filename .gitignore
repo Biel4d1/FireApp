@@ -1,0 +1,92 @@
+# ==========================================
+# Database & Secrets (CRITICAL SECURITY)
+# ==========================================
+*.db
+*.sqlite
+*.sqlite3
+postgres_data/
+redis_data/
+.env
+.env.*
+!.env.example
+
+# Environment Secrets / Keys
+reports.txt
+
+# ==========================================
+# Large Media & Uploaded Files
+# ==========================================
+uploads/
+uploads/videos/
+uploads/profiles/
+uploads/videos/thumbnails/
+backend-uploads/
+app/uploads/
+
+# ==========================================
+# Python Runtime & Machine Learning Weights
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv/
+pip-log.txt
+pip-delete-this-directory/
+.pytest_cache/
+.huggingface/
+huggingface/
+models/
+*.bin
+*.pt
+*.safetensors
+*.onnx
+
+# ==========================================
+# Node.js & React Native / Expo (Frontend)
+# ==========================================
+node_modules/
+.expo/
+dist/
+web-build/
+*.native-packager.log
+*.user
+*.suo
+*.idb
+*.pdb
+
+# EAS / Expo Native Builds
+.eas/
+*.apk
+*.aab
+*.ipa
+
+# ==========================================
+# Go Binaries & Build Output
+# ==========================================
+/server
+/main
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# ==========================================
+# Operating System & IDE Clutter
+# ==========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.vscode/
+.idea/

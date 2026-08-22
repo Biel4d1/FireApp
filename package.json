@@ -1,0 +1,5 @@
+{
+  "devDependencies": {
+    "@react-native/gradle-plugin": "^0.87.0"
+  }
+}

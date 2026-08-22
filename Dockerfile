@@ -1,34 +1,28 @@
-# Use a slim Python image for a smaller footprint
-FROM python:3.11-slim
+# Stage 1: Build the Go binary
+FROM golang:alpine AS builder
 
-# Prevent Python from writing .pyc files and enable unbuffered logging
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
+WORKDIR /app
 
-# Install system dependencies (FFmpeg is critical for your thumbnails!)
-RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    libpq-dev \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
+ENV GOTOOLCHAIN=auto
 
-# Set the working directory
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+# Ensure all package references are synchronized in go.mod/go.sum
+RUN go mod tidy
+RUN CGO_ENABLED=0 GOOS=linux go build -o server .
+
+# Stage 2: Create runtime container
+FROM alpine:latest
+
+RUN apk add --no-cache ffmpeg ca-certificates
+
 WORKDIR /backend
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY --from=builder /app/server .
+RUN mkdir -p uploads/videos uploads/profiles
 
-# Pre-download the AI model so it doesn't download every time the app starts
-RUN python -c "from transformers import ViTImageProcessor, ViTForImageClassification; \
-    ViTImageProcessor.from_pretrained('google/vit-base-patch16-224'); \
-    ViTForImageClassification.from_pretrained('google/vit-base-patch16-224')"
-
-# Copy the rest of your code
-COPY . .
-
-# Expose the Flask port
 EXPOSE 5000
 
-# This is the default command, but we'll override it in docker-compose for the worker
-CMD ["python", "backend.py"]
+CMD ["./server"]

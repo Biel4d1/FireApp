@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "64e4f7fc-f2ab-4b97-a363-8d2cb9af183e"
+      }
+    },
+    "android": {
+      "package": "com.bielzin_022.smartvideos"
+    }
+  }
+}

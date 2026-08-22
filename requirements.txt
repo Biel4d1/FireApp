@@ -5,8 +5,10 @@ Werkzeug==3.0.1
 opencv-python
 transformers>=4.0.0
 torch
+torchaudio
+librosa
+soundfile
 Pillow
 psycopg2-binary
-# Redis + RQ for background task queueing and in-memory counters
 redis>=4.0
 rq>=1.0
