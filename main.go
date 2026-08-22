@@ -307,6 +307,22 @@ func parseOptionalUserID(c *gin.Context) *int {
 	return nil
 }
 
+func parseSeenIDs(c *gin.Context) []int {
+	seenQuery := c.Query("seen")
+	if seenQuery == "" {
+		return []int{}
+	}
+
+	parts := strings.Split(seenQuery, ",")
+	ids := make([]int, 0, len(parts))
+	for _, p := range parts {
+		if id, err := strconv.Atoi(strings.TrimSpace(p)); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
 // -----------------------------------------------------------------------------
 // Handlers
 // -----------------------------------------------------------------------------
@@ -417,7 +433,6 @@ func deleteAccountHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "account deleted"})
 }
 
-// Fixed: Full Parity Multi-Factor Recommendation Engine
 func personalizedFeedHandler(c *gin.Context) {
 	currentUserID := parseOptionalUserID(c)
 	userParam := -1
@@ -425,74 +440,57 @@ func personalizedFeedHandler(c *gin.Context) {
 		userParam = *currentUserID
 	}
 
+	seenIDs := parseSeenIDs(c)
+
 	var hasEmbeddingCol bool
 	db.QueryRow("SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='videos' AND column_name='embedding')").Scan(&hasEmbeddingCol)
 
 	var sqlQuery string
 	var params []interface{}
 
-	if hasEmbeddingCol {
-		sqlQuery = `
-WITH user_engaged_videos AS (
-    SELECT v_sub.id, v_sub.embedding
-    FROM interactions i
-    JOIN videos v_sub ON i.video_id = v_sub.id
-    WHERE i.user_id = $1
-      AND (i.watch_time_ms >= 3000 OR EXISTS(SELECT 1 FROM likes l WHERE l.user_id = $2 AND l.video_id = v_sub.id))
-      AND v_sub.embedding IS NOT NULL
-),
-user_liked_tags AS (
-    SELECT string_agg(v_sub.tags, ',') AS preferred_tags
-    FROM interactions i
-    JOIN videos v_sub ON i.video_id = v_sub.id
-    WHERE i.user_id = $3 AND (i.watch_time_ms >= 3000 OR EXISTS(SELECT 1 FROM likes l WHERE l.user_id = $4 AND l.video_id = v_sub.id))
-)
-SELECT v.id, v.filename, COALESCE(v.thumbnail, '') AS thumbnail, COALESCE(v.description, '') AS description, v.uploader_id, COALESCE(u.username, '') AS username, COALESCE(u.profile_pic_url, '') AS profile_pic_url, COALESCE(v.tags, '') AS tags, COALESCE(v.likes_count, 0) AS likes_count,
-  COALESCE(COUNT(DISTINCT c.id), 0) as comments_count,
-  CASE WHEN EXISTS(SELECT 1 FROM likes lk WHERE lk.user_id = $5 AND lk.video_id = v.id) THEN 1 ELSE 0 END AS liked_score,
-  CASE WHEN EXISTS(SELECT 1 FROM dislikes dk WHERE dk.user_id = $6 AND dk.video_id = v.id) THEN 1 ELSE 0 END AS disliked_score,
-  ((0.35 * (CASE WHEN COALESCE(max_watch.max_w,0) > 0 THEN CAST(COALESCE(user_watch.uw,0) AS FLOAT) / max_watch.max_w ELSE 0 END))
-   + (0.25 * (
-      CASE
-        WHEN v.embedding IS NOT NULL AND EXISTS(SELECT 1 FROM user_engaged_videos) THEN
-          (SELECT AVG(1 - (v.embedding <=> uev.embedding)) FROM user_engaged_videos uev)
-        WHEN v.tags IS NOT NULL AND v.tags != '' AND (SELECT preferred_tags FROM user_liked_tags) IS NOT NULL THEN
-          LEAST(1.0, (SELECT COUNT(*) FROM unnest(string_to_array(v.tags, ',')) tag WHERE (SELECT preferred_tags FROM user_liked_tags) LIKE '%' || tag || '%') * 0.25)
-        ELSE 0
-      END
-     ))
-   + (0.15 * (CASE WHEN EXISTS(SELECT 1 FROM comments c3 JOIN videos vv ON c3.video_id = vv.id WHERE c3.user_id = $7 AND vv.uploader_id = v.uploader_id) THEN 1 ELSE 0 END))
-   + (0.15 * (CASE WHEN EXISTS(SELECT 1 FROM likes lk WHERE lk.user_id = $8 AND lk.video_id = v.id) THEN 1 ELSE 0 END))
-   - (0.30 * (CASE WHEN EXISTS(SELECT 1 FROM dislikes dk2 WHERE dk2.user_id = $9 AND dk2.video_id = v.id) THEN 1 ELSE 0 END))
-  ) AS weighted_score,
-  (COALESCE(v.likes_count, 0) + COALESCE(COUNT(DISTINCT c.id), 0)) AS global_popularity
-FROM videos v
-LEFT JOIN users u ON v.uploader_id = u.id
-LEFT JOIN comments c ON v.id = c.video_id
-LEFT JOIN (SELECT video_id, MAX(watch_time_ms) AS max_w FROM interactions GROUP BY video_id) AS max_watch ON max_watch.video_id = v.id
-LEFT JOIN (SELECT video_id, watch_time_ms AS uw FROM interactions WHERE user_id = $10) AS user_watch ON user_watch.video_id = v.id
-WHERE COALESCE(v.is_published, TRUE) = TRUE
-GROUP BY v.id, u.username, u.profile_pic_url, max_watch.max_w, user_watch.uw, v.embedding
-ORDER BY weighted_score DESC, global_popularity DESC, v.id DESC`
-		params = []interface{}{userParam, userParam, userParam, userParam, userParam, userParam, userParam, userParam, userParam, userParam}
-	} else {
-		sqlQuery = `
+	exclusionClause := ""
+	if len(seenIDs) > 0 {
+		placeholders := make([]string, len(seenIDs))
+		offset := 9
+
+		for i := range seenIDs {
+			placeholders[i] = fmt.Sprintf("$%d", offset+i)
+		}
+		exclusionClause = fmt.Sprintf(" AND v.id NOT IN (%s)", strings.Join(placeholders, ","))
+	}
+
+	sqlQuery = fmt.Sprintf(`
 WITH user_liked_tags AS (
-    SELECT string_agg(v_sub.tags, ',') AS preferred_tags
+    SELECT string_to_array(string_agg(v_sub.tags, ','), ',') AS preferred_tags
     FROM interactions i
     JOIN videos v_sub ON i.video_id = v_sub.id
     WHERE i.user_id = $1 AND (i.watch_time_ms >= 3000 OR EXISTS(SELECT 1 FROM likes l WHERE l.user_id = $2 AND l.video_id = v_sub.id))
 )
-SELECT v.id, v.filename, COALESCE(v.thumbnail, '') AS thumbnail, COALESCE(v.description, '') AS description, v.uploader_id, COALESCE(u.username, '') AS username, COALESCE(u.profile_pic_url, '') AS profile_pic_url, COALESCE(v.tags, '') AS tags, COALESCE(v.likes_count, 0) AS likes_count,
+SELECT 
+  v.id, 
+  v.filename, 
+  COALESCE(v.thumbnail, '') AS thumbnail, 
+  COALESCE(v.description, '') AS description, 
+  v.uploader_id, 
+  COALESCE(u.username, 'Unknown') AS username, 
+  COALESCE(u.profile_pic_url, '') AS profile_pic_url, 
+  COALESCE(v.tags, '') AS tags, 
+  COALESCE(v.likes_count, 0) AS likes_count,
   COALESCE(COUNT(DISTINCT c.id), 0) as comments_count,
   CASE WHEN EXISTS(SELECT 1 FROM likes lk WHERE lk.user_id = $3 AND lk.video_id = v.id) THEN 1 ELSE 0 END AS liked_score,
   CASE WHEN EXISTS(SELECT 1 FROM dislikes dk WHERE dk.user_id = $4 AND dk.video_id = v.id) THEN 1 ELSE 0 END AS disliked_score,
   ((0.35 * (CASE WHEN COALESCE(max_watch.max_w,0) > 0 THEN CAST(COALESCE(user_watch.uw,0) AS FLOAT) / max_watch.max_w ELSE 0 END))
    + (0.25 * (
-      CASE
+      CASE 
         WHEN v.tags IS NOT NULL AND v.tags != '' AND (SELECT preferred_tags FROM user_liked_tags) IS NOT NULL THEN
-          LEAST(1.0, (SELECT COUNT(*) FROM unnest(string_to_array(v.tags, ',')) tag WHERE (SELECT preferred_tags FROM user_liked_tags) LIKE '%' || tag || '%') * 0.25)
-        ELSE 0
+          LEAST(1.0, cardinality(
+            ARRAY(
+              SELECT unnest(string_to_array(v.tags, ',')) 
+              INTERSECT 
+              SELECT unnest((SELECT preferred_tags FROM user_liked_tags))
+            )
+          ) * 0.25)
+        ELSE 0 
       END
      ))
    + (0.15 * (CASE WHEN EXISTS(SELECT 1 FROM comments c3 JOIN videos vv ON c3.video_id = vv.id WHERE c3.user_id = $5 AND vv.uploader_id = v.uploader_id) THEN 1 ELSE 0 END))
@@ -505,10 +503,13 @@ LEFT JOIN users u ON v.uploader_id = u.id
 LEFT JOIN comments c ON v.id = c.video_id
 LEFT JOIN (SELECT video_id, MAX(watch_time_ms) AS max_w FROM interactions GROUP BY video_id) AS max_watch ON max_watch.video_id = v.id
 LEFT JOIN (SELECT video_id, watch_time_ms AS uw FROM interactions WHERE user_id = $8) AS user_watch ON user_watch.video_id = v.id
-WHERE COALESCE(v.is_published, TRUE) = TRUE
+WHERE (v.is_published IS TRUE OR v.is_published IS NULL)%s
 GROUP BY v.id, u.username, u.profile_pic_url, max_watch.max_w, user_watch.uw
-ORDER BY weighted_score DESC, global_popularity DESC, v.id DESC`
-		params = []interface{}{userParam, userParam, userParam, userParam, userParam, userParam, userParam, userParam}
+ORDER BY weighted_score DESC, global_popularity DESC, v.id DESC`, exclusionClause)
+
+	params = []interface{}{userParam, userParam, userParam, userParam, userParam, userParam, userParam, userParam}
+	for _, id := range seenIDs {
+		params = append(params, id)
 	}
 
 	rows, err := db.Query(sqlQuery, params...)
@@ -521,13 +522,34 @@ ORDER BY weighted_score DESC, global_popularity DESC, v.id DESC`
 
 	videos := make([]gin.H, 0)
 	for rows.Next() {
-		var id, uploaderID, likesCount, commentsCount, likedScore, dislikedScore, globalPopularity int
+		var id, likesCount, commentsCount, likedScore, dislikedScore, globalPopularity int
 		var filename, thumbnail, description, username, profilePicUrl, tags string
 		var weightedScore float64
+		var uploaderIDSql sql.NullInt64
 
-		if err := rows.Scan(&id, &filename, &thumbnail, &description, &uploaderID, &username, &profilePicUrl, &tags, &likesCount, &commentsCount, &likedScore, &dislikedScore, &weightedScore, &globalPopularity); err != nil {
+		if err := rows.Scan(
+			&id,
+			&filename,
+			&thumbnail,
+			&description,
+			&uploaderIDSql,
+			&username,
+			&profilePicUrl,
+			&tags,
+			&likesCount,
+			&commentsCount,
+			&likedScore,
+			&dislikedScore,
+			&weightedScore,
+			&globalPopularity,
+		); err != nil {
 			log.Printf("[FEED SCAN ERROR] %v", err)
 			continue
+		}
+
+		uploaderID := 0
+		if uploaderIDSql.Valid {
+			uploaderID = int(uploaderIDSql.Int64)
 		}
 
 		var isLikedFlag, isDislikedFlag bool
@@ -564,6 +586,12 @@ ORDER BY weighted_score DESC, global_popularity DESC, v.id DESC`
 			"dislikes_count": finalDislikes,
 			"weighted_score": weightedScore,
 		})
+	}
+
+	if len(videos) == 0 && len(seenIDs) > 0 {
+		c.Request.URL.RawQuery = ""
+		personalizedFeedHandler(c)
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"videos": videos})
@@ -645,7 +673,6 @@ func addCommentHandler(c *gin.Context) {
 	})
 }
 
-// Fixed: Supports Postgres Fallback if Redis is Offline
 func toggleLikeHandler(c *gin.Context) {
 	userID := c.GetInt("current_user_id")
 	var req struct {
@@ -689,7 +716,6 @@ func toggleLikeHandler(c *gin.Context) {
 		return
 	}
 
-	// PostgreSQL Failover Branch
 	var exists bool
 	db.QueryRow("SELECT EXISTS(SELECT 1 FROM likes WHERE user_id = $1 AND video_id = $2)", userID, req.VideoID).Scan(&exists)
 	if exists {
@@ -717,7 +743,6 @@ func toggleLikeHandler(c *gin.Context) {
 	})
 }
 
-// Fixed: Supports Postgres Fallback if Redis is Offline
 func toggleDislikeHandler(c *gin.Context) {
 	userID := c.GetInt("current_user_id")
 	var req struct {
@@ -761,7 +786,6 @@ func toggleDislikeHandler(c *gin.Context) {
 		return
 	}
 
-	// PostgreSQL Failover Branch
 	var exists bool
 	db.QueryRow("SELECT EXISTS(SELECT 1 FROM dislikes WHERE user_id = $1 AND video_id = $2)", userID, req.VideoID).Scan(&exists)
 	if exists {
