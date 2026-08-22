@@ -89,4 +89,4 @@ web-build/
 ehthumbs.db
 Thumbs.db
 .vscode/
-.idea/
+.idea/ffmpeg-static/
