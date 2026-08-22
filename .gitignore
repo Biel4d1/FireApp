@@ -90,3 +90,6 @@ ehthumbs.db
 Thumbs.db
 .vscode/
 .idea/ffmpeg-static/
+sample_videos/
+ingest.py
+uploads/
