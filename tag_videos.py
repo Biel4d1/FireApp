@@ -1,7 +1,7 @@
 
 import subprocess
 
-def ensure_lightweight_video(file_path, max_size_mb=20):
+def ensure_lightweight_video(file_path, max_size_mb=50):
     """Checks video file size. If larger than max_size_mb, transcodes to optimized 720p H.264."""
     if not os.path.exists(file_path):
         return
@@ -66,6 +66,7 @@ VIDEO_EXTS = {'.mp4', '.mov', '.avi', '.mkv', '.webm'}
 
 # Clean concept labels for zero-shot text classification via CLIP
 CONCEPT_LABELS = [
+    "person", "people", "human", "man", "woman",
     "gaming", "sports", "funny moment", "vlog", "nature", "music performance",
     "cooking", "pets and animals", "urban life", "sunset", "party", "car driving",
     "meme", "dancing", "fitness and workout", "art and design", "technology", "water sports",

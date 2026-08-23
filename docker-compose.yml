@@ -20,6 +20,8 @@ services:
       context: .
       dockerfile: Dockerfile.worker
     user: "0:0"
+    ports:
+      - "5001:5001"
     command: python worker.py
     volumes:
       - .:/backend:z

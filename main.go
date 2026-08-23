@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -35,10 +36,6 @@ var (
 )
 
 const jwtExpDays = 7
-
-// -----------------------------------------------------------------------------
-// Database & Migration Helpers
-// -----------------------------------------------------------------------------
 
 func getDB() *sql.DB {
 	dsn := os.Getenv("DATABASE_URL")
@@ -116,7 +113,7 @@ func syncRedisFromDB() {
 		}
 	}
 
-		rowsDislikes, err := db.Query("SELECT video_id, user_id FROM dislikes")
+	rowsDislikes, err := db.Query("SELECT video_id, user_id FROM dislikes")
 	if err == nil {
 		defer rowsDislikes.Close()
 		for rowsDislikes.Next() {
@@ -142,6 +139,7 @@ func enqueueRQTask(funcName string, args ...interface{}) {
 		rdb.RPush(ctx, "tasks", data)
 	}
 }
+
 func formatUploadPath(raw string) string {
 	if raw == "" {
 		return ""
@@ -152,10 +150,6 @@ func formatUploadPath(raw string) string {
 	}
 	return cleaned
 }
-
-// -----------------------------------------------------------------------------
-// Auth & Password Verification
-// -----------------------------------------------------------------------------
 
 func verifyPassword(hashedPassword, password string) bool {
 	if err := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password)); err == nil {
@@ -316,10 +310,6 @@ func parseSeenIDs(c *gin.Context) []int {
 	return ids
 }
 
-// -----------------------------------------------------------------------------
-// Handlers
-// -----------------------------------------------------------------------------
-
 func signupHandler(c *gin.Context) {
 	var req struct {
 		Username string `json:"username"`
@@ -434,9 +424,6 @@ func personalizedFeedHandler(c *gin.Context) {
 	}
 
 	seenIDs := parseSeenIDs(c)
-
-	var hasEmbeddingCol bool
-	db.QueryRow("SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='videos' AND column_name='embedding')").Scan(&hasEmbeddingCol)
 
 	exclusionClause := ""
 	if len(seenIDs) > 0 {
@@ -1072,15 +1059,105 @@ func reportUserHandler(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"message": "user report submitted", "report_id": reportID})
 }
 
-// -----------------------------------------------------------------------------
-// Main Execution
-// -----------------------------------------------------------------------------
-
 func getEnv(key, fallback string) string {
 	if val := os.Getenv(key); val != "" {
 		return val
 	}
 	return fallback
+}
+
+func fetchTextVector(query string) string {
+	payload := map[string]string{"text": query}
+	body, _ := json.Marshal(payload)
+	resp, err := http.Post("http://worker:5001/embed", "application/json", bytes.NewBuffer(body))
+	if err != nil || resp.StatusCode != http.StatusOK {
+		return ""
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Vector []float64 `json:"vector"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil || len(result.Vector) == 0 {
+		return ""
+	}
+
+	strVec := make([]string, len(result.Vector))
+	for i, v := range result.Vector {
+		strVec[i] = fmt.Sprintf("%f", v)
+	}
+	return "[" + strings.Join(strVec, ",") + "]"
+}
+
+func searchHandler(c *gin.Context) {
+	userID := c.GetInt("current_user_id")
+	q := strings.TrimSpace(c.Query("q"))
+	if q == "" {
+		c.JSON(http.StatusOK, gin.H{"videos": []gin.H{}, "users": []gin.H{}})
+		return
+	}
+
+	db.Exec("INSERT INTO searches (user_id, query) VALUES ($1, $2)", userID, q)
+	searchPattern := "%" + q + "%"
+
+	vecStr := fetchTextVector(q)
+
+	var vRows *sql.Rows
+	var err error
+
+	if vecStr != "" {
+		vRows, err = db.Query(`
+			SELECT v.id, v.filename, COALESCE(v.thumbnail, ''), COALESCE(v.description, ''), 
+			       v.uploader_id, COALESCE(u.username, 'Unknown'), COALESCE(u.profile_pic_url, ''), 
+			       COALESCE(v.tags, ''), COALESCE(v.likes_count, 0)
+			FROM videos v
+			LEFT JOIN users u ON v.uploader_id = u.id
+			WHERE (v.is_published IS TRUE OR v.is_published IS NULL) AND v.embedding IS NOT NULL
+			ORDER BY v.embedding <-> $1::vector ASC
+			LIMIT 30
+		`, vecStr)
+	} else {
+		vRows, err = db.Query(`
+			SELECT v.id, v.filename, COALESCE(v.thumbnail, ''), COALESCE(v.description, ''), 
+			       v.uploader_id, COALESCE(u.username, 'Unknown'), COALESCE(u.profile_pic_url, ''), 
+			       COALESCE(v.tags, ''), COALESCE(v.likes_count, 0)
+			FROM videos v
+			LEFT JOIN users u ON v.uploader_id = u.id
+			WHERE (v.tags ILIKE $1 OR v.description ILIKE $1) AND (v.is_published IS TRUE OR v.is_published IS NULL)
+			ORDER BY v.id DESC LIMIT 30
+		`, searchPattern)
+	}
+
+	videos := make([]gin.H, 0)
+	if err == nil {
+		defer vRows.Close()
+		for vRows.Next() {
+			var id, uploaderID, likes int
+			var fn, thumb, desc, un, pfp, tags string
+			if err := vRows.Scan(&id, &fn, &thumb, &desc, &uploaderID, &un, &pfp, &tags, &likes); err == nil {
+				videos = append(videos, gin.H{
+					"id": id, "filename": fn, "thumbnail": formatUploadPath(thumb),
+					"description": desc, "uploader_id": uploaderID, "username": un,
+					"profile_pic_url": formatUploadPath(pfp), "tags": tags, "likes_count": likes,
+				})
+			}
+		}
+	}
+
+	uRows, err := db.Query("SELECT id, username, COALESCE(profile_pic_url, '') FROM users WHERE username ILIKE $1 LIMIT 10", searchPattern)
+	userProfiles := make([]gin.H, 0)
+	if err == nil {
+		defer uRows.Close()
+		for uRows.Next() {
+			var uid int
+			var un, pfp string
+			if err := uRows.Scan(&uid, &un, &pfp); err == nil {
+				userProfiles = append(userProfiles, gin.H{"id": uid, "username": un, "profile_pic_url": formatUploadPath(pfp)})
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"videos": videos, "users": userProfiles})
 }
 
 func main() {
@@ -1113,7 +1190,7 @@ func main() {
 	r.POST("/login", loginHandler)
 	r.GET("/me", tokenRequired(), meHandler)
 	r.POST("/upload", tokenRequired(), func(c *gin.Context) {
-		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 100<<20) // 100MB
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 100<<20)
 		uploadHandler(c)
 	})
 	r.POST("/upload_profile_pic", tokenRequired(), uploadProfilePicHandler)
@@ -1136,60 +1213,4 @@ func main() {
 	log.Printf("🔥 Server running on http://0.0.0.0:%s", port)
 	r.GET("/search", tokenRequired(), searchHandler)
 	r.Run(":" + port)
-}
-func searchHandler(c *gin.Context) {
-	userID := c.GetInt("current_user_id")
-	q := strings.TrimSpace(c.Query("q"))
-	if q == "" {
-		c.JSON(http.StatusOK, gin.H{"videos": []gin.H{}, "users": []gin.H{}})
-		return
-	}
-
-	// 1. Log user search query into DB
-	db.Exec("INSERT INTO searches (user_id, query) VALUES ($1, $2)", userID, q)
-
-	searchPattern := "%" + q + "%"
-
-	// 2. Query matching videos (by tags or description)
-	vRows, err := db.Query(`
-		SELECT v.id, v.filename, COALESCE(v.thumbnail, ''), COALESCE(v.description, ''), 
-		       v.uploader_id, COALESCE(u.username, 'Unknown'), COALESCE(u.profile_pic_url, ''), 
-		       COALESCE(v.tags, ''), COALESCE(v.likes_count, 0)
-		FROM videos v
-		LEFT JOIN users u ON v.uploader_id = u.id
-		WHERE (v.tags ILIKE $1 OR v.description ILIKE $1) AND (v.is_published IS TRUE OR v.is_published IS NULL)
-		ORDER BY v.id DESC LIMIT 30
-	`, searchPattern)
-
-	videos := make([]gin.H, 0)
-	if err == nil {
-		defer vRows.Close()
-		for vRows.Next() {
-			var id, uploaderID, likes int
-			var fn, thumb, desc, un, pfp, tags string
-			if err := vRows.Scan(&id, &fn, &thumb, &desc, &uploaderID, &un, &pfp, &tags, &likes); err == nil {
-				videos = append(videos, gin.H{
-					"id": id, "filename": fn, "thumbnail": formatUploadPath(thumb),
-					"description": desc, "uploader_id": uploaderID, "username": un,
-					"profile_pic_url": formatUploadPath(pfp), "tags": tags, "likes_count": likes,
-				})
-			}
-		}
-	}
-
-	// 3. Query matching profiles
-	uRows, err := db.Query("SELECT id, username, COALESCE(profile_pic_url, '') FROM users WHERE username ILIKE $1 LIMIT 10", searchPattern)
-	userProfiles := make([]gin.H, 0)
-	if err == nil {
-		defer uRows.Close()
-		for uRows.Next() {
-			var uid int
-			var un, pfp string
-			if err := uRows.Scan(&uid, &un, &pfp); err == nil {
-				userProfiles = append(userProfiles, gin.H{"id": uid, "username": un, "profile_pic_url": formatUploadPath(pfp)})
-			}
-		}
-	}
-
-	c.JSON(http.StatusOK, gin.H{"videos": videos, "users": userProfiles})
 }
