@@ -111,5 +111,15 @@ func initPostgreSQL() {
 	);`
 	db.Exec(reportsTable)
 
+	// 9. Create Searches Table
+	searchesTable := `
+	CREATE TABLE IF NOT EXISTS searches (
+		id SERIAL PRIMARY KEY,
+		user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+		query TEXT NOT NULL,
+		timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);`
+	db.Exec(searchesTable)
+
 	log.Println("PostgreSQL initialization complete.")
 }

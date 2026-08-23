@@ -1,3 +1,37 @@
+
+import subprocess
+
+def ensure_lightweight_video(file_path, max_size_mb=20):
+    """Checks video file size. If larger than max_size_mb, transcodes to optimized 720p H.264."""
+    if not os.path.exists(file_path):
+        return
+    
+    size_mb = os.path.getsize(file_path) / (1024 * 1024)
+    if size_mb <= max_size_mb:
+        return
+
+    print(f"⚡ File {file_path} is {size_mb:.1f}MB (exceeds {max_size_mb}MB limit). Transcoding to lightweight 720p MP4...")
+    temp_path = file_path + ".transcoded.mp4"
+    
+    # FFmpeg command: scale to 720p height (maintaining aspect ratio), H.264 CRF 26, AAC audio, +faststart
+    cmd = [
+        "ffmpeg", "-y", "-i", file_path,
+        "-vf", "scale=-2:720",
+        "-c:v", "libx264", "-crf", "26", "-preset", "fast",
+        "-c:a", "aac", "-b:a", "128k",
+        "-movflags", "+faststart",
+        temp_path
+    ]
+    
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        os.replace(temp_path, file_path)
+        new_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+        print(f"✅ Transcoding complete: {size_mb:.1f}MB -> {new_size_mb:.1f}MB")
+    except Exception as e:
+        print(f"❌ Transcoding failed for {file_path}: {e}")
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
 #!/usr/bin/env python3
 """Extract frames and audio from videos in uploads/, extract multimodal CLIP embeddings
 and optional Audio Transformer (AST) tags, and save normalized 512-d vectors + clean concept tags into PostgreSQL.
@@ -27,14 +61,15 @@ except Exception:
 import psycopg2
 import psycopg2.extras
 
-VIDEO_DIR = 'uploads'
+VIDEO_DIR = 'uploads/videos'
 VIDEO_EXTS = {'.mp4', '.mov', '.avi', '.mkv', '.webm'}
 
 # Clean concept labels for zero-shot text classification via CLIP
 CONCEPT_LABELS = [
     "gaming", "sports", "funny moment", "vlog", "nature", "music performance",
     "cooking", "pets and animals", "urban life", "sunset", "party", "car driving",
-    "meme", "dancing", "fitness and workout", "art and design", "technology", "water sports"
+    "meme", "dancing", "fitness and workout", "art and design", "technology", "water sports",
+    "spiderman", "superhero"
 ]
 
 # Noise / UI artifact tags to ignore
@@ -182,7 +217,10 @@ def generate_clip_embedding_and_tags(imgs, model_name='openai/clip-vit-base-patc
     return vector_list, top_tags
 
 
-def tag_file(filename, video_dir=VIDEO_DIR, topk=3, image_model_name='openai/clip-vit-base-patch32', audio_model_name=None):
+def tag_file(filename, video_dir=VIDEO_DIR,
+    path = os.path.join(video_dir, filename)
+    ensure_lightweight_video(path)
+ topk=3, image_model_name='openai/clip-vit-base-patch32', audio_model_name=None):
     path = os.path.join(video_dir, filename)
     if not os.path.isfile(path):
         raise FileNotFoundError(f"video not found: {path}")
@@ -220,9 +258,10 @@ def tag_file(filename, video_dir=VIDEO_DIR, topk=3, image_model_name='openai/cli
         # 3. Filter out Noise / STOP_TAGS
         clean_labels = set()
         for label in label_set:
-            raw_name = label.replace('audio:', '').strip().lower()
-            if raw_name not in STOP_TAGS and len(raw_name) > 2:
-                clean_labels.add(label)
+            clean_name = label.strip().lower()
+            raw_check = clean_name.replace('audio:', '')
+            if raw_check not in STOP_TAGS and len(raw_check) > 2:
+                clean_labels.add(clean_name)
 
         tags = ','.join(sorted(clean_labels)) if clean_labels else ''
 

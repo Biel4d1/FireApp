@@ -133,16 +133,13 @@ func enqueueRQTask(funcName string, args ...interface{}) {
 	if rdb == nil {
 		return
 	}
-	jobID := fmt.Sprintf("job_%d_%d", time.Now().Unix(), time.Now().Nanosecond())
 	payload := map[string]interface{}{
-		"id":        jobID,
 		"func_name": funcName,
 		"args":      args,
-		"kwargs":    map[string]interface{}{},
 	}
 	data, err := json.Marshal(payload)
 	if err == nil {
-		rdb.RPush(ctx, "rq:queue:default", data)
+		rdb.RPush(ctx, "tasks", data)
 	}
 }
 func formatUploadPath(raw string) string {
@@ -1135,5 +1132,62 @@ func main() {
 
 	port := getEnv("PORT", "5000")
 	log.Printf("🔥 Server running on http://0.0.0.0:%s", port)
+	r.GET("/search", tokenRequired(), searchHandler)
 	r.Run(":" + port)
+}
+func searchHandler(c *gin.Context) {
+	userID := c.GetInt("current_user_id")
+	q := strings.TrimSpace(c.Query("q"))
+	if q == "" {
+		c.JSON(http.StatusOK, gin.H{"videos": []gin.H{}, "users": []gin.H{}})
+		return
+	}
+
+	// 1. Log user search query into DB
+	db.Exec("INSERT INTO searches (user_id, query) VALUES ($1, $2)", userID, q)
+
+	searchPattern := "%" + q + "%"
+
+	// 2. Query matching videos (by tags or description)
+	vRows, err := db.Query(`
+		SELECT v.id, v.filename, COALESCE(v.thumbnail, ''), COALESCE(v.description, ''), 
+		       v.uploader_id, COALESCE(u.username, 'Unknown'), COALESCE(u.profile_pic_url, ''), 
+		       COALESCE(v.tags, ''), COALESCE(v.likes_count, 0)
+		FROM videos v
+		LEFT JOIN users u ON v.uploader_id = u.id
+		WHERE (v.tags ILIKE $1 OR v.description ILIKE $1) AND (v.is_published IS TRUE OR v.is_published IS NULL)
+		ORDER BY v.id DESC LIMIT 30
+	`, searchPattern)
+
+	videos := make([]gin.H, 0)
+	if err == nil {
+		defer vRows.Close()
+		for vRows.Next() {
+			var id, uploaderID, likes int
+			var fn, thumb, desc, un, pfp, tags string
+			if err := vRows.Scan(&id, &fn, &thumb, &desc, &uploaderID, &un, &pfp, &tags, &likes); err == nil {
+				videos = append(videos, gin.H{
+					"id": id, "filename": fn, "thumbnail": formatUploadPath(thumb),
+					"description": desc, "uploader_id": uploaderID, "username": un,
+					"profile_pic_url": formatUploadPath(pfp), "tags": tags, "likes_count": likes,
+				})
+			}
+		}
+	}
+
+	// 3. Query matching profiles
+	uRows, err := db.Query("SELECT id, username, COALESCE(profile_pic_url, '') FROM users WHERE username ILIKE $1 LIMIT 10", searchPattern)
+	userProfiles := make([]gin.H, 0)
+	if err == nil {
+		defer uRows.Close()
+		for uRows.Next() {
+			var uid int
+			var un, pfp string
+			if err := uRows.Scan(&uid, &un, &pfp); err == nil {
+				userProfiles = append(userProfiles, gin.H{"id": uid, "username": un, "profile_pic_url": formatUploadPath(pfp)})
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"videos": videos, "users": userProfiles})
 }
