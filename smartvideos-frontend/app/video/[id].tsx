@@ -316,7 +316,7 @@ function VideoDetailItem({ item, isFocused, containerHeight, onDownload, onComme
         id={item.id}
         source={{ uri: videoUri || (() => {
           const base = (apiClient.API_BASE_URL || '').replace(/\/$/, '');
-          return `${base}/video/${item.filename}?cache_bust=${Date.now()}`;
+          return `${base}/video/${item.filename}`;
         })() }}
         shouldPlay={isFocused}
         onDoubleTap={handleToggleLike}

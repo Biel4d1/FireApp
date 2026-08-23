@@ -170,7 +170,7 @@ export default function ProfileScreen() {
   }
   function renderGridItem({ item }: { item: any }) {
     const base = (getApiClient().defaults.baseURL || '').replace(/\/$/, '');
-    const uri = `${base}/video/${item.filename}?cache_bust=${Date.now()}`;
+    const uri = `${base}/video/${item.filename}`;
     const isLiked = item.liked || item.is_liked || false;
 
     return (

@@ -7,12 +7,12 @@ export async function getPlayableUri(filename: string) {
   // On web, just return remote URL (headers work differently on web)
   if (Platform.OS === 'web') {
     const base = (apiClient.API_BASE_URL || '').replace(/\/$/, '');
-    return `${base}/video/${filename}?cache_bust=${Date.now()}`;
+    return `${base}/video/${filename}`;
   }
 
   try {
     const base = (apiClient.API_BASE_URL || '').replace(/\/$/, '');
-    const remote = `${base}/video/${filename}?cache_bust=${Date.now()}`;
+    const remote = `${base}/video/${filename}`;
     const cacheDir = ((FileSystem as any).cacheDirectory) || ((FileSystem as any).documentDirectory) || '';
     const localPath = `${cacheDir}videos/${filename}`;
 
@@ -35,7 +35,7 @@ export async function getPlayableUri(filename: string) {
   } catch (e) {
     try { console.warn('videoCache error', e); } catch (e2) {}
     const base = (apiClient.API_BASE_URL || '').replace(/\/$/, '');
-    return `${base}/video/${filename}?cache_bust=${Date.now()}`;
+    return `${base}/video/${filename}`;
   }
 }
 
