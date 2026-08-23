@@ -1,35 +1,30 @@
-import os
 import json
 import time
+import os
 import redis
-import backend
+import psycopg2
+from tag_videos import tag_file
 
-REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+r = redis.Redis.from_url(REDIS_URL)
 
-if __name__ == '__main__':
-    r = redis.from_url(REDIS_URL, socket_timeout=None)
-    print("🚀 Simple Background Worker started listening on 'tasks' queue...")
-    
-    while True:
-        try:
-            res = r.blpop("tasks", timeout=5)
-            if not res:
-                continue
+print("🚀 Background Worker active. Processing Redis task queue...")
 
-            _, data = res
-            task = json.loads(data)
-            func_name = task.get("func_name")
-            args = task.get("args", [])
-            print(f"Processing task: {func_name} with args: {args}")
+while True:
+    try:
+        _, data = r.blpop("tasks")
+        task = json.loads(data)
+        func_name = task.get("func_name")
+        args = task.get("args", [])
 
-            if func_name == "backend.background_extract_and_save_thumbnail":
-                backend.background_extract_and_save_thumbnail(*args)
-            elif func_name == "backend.background_run_tagger":
-                backend.background_run_tagger(*args)
-            else:
-                print(f"Unknown task: {func_name}")
-        except redis.exceptions.TimeoutError:
-            continue
-        except Exception as e:
-            print(f"Error processing task: {e}")
-            time.sleep(1)
+        if "background_run_tagger" in func_name or "tag_videos" in func_name:
+            filename = args[0]
+            print(f"⚙️ Running AI Multimodal Tagger on {filename}...")
+            try:
+                tags = tag_file(filename)
+                print(f"✅ Extracted AI Tags for {filename}: {tags}")
+            except Exception as e:
+                print(f"❌ Error tagging {filename}: {e}")
+
+    except Exception as e:
+        time.sleep(1)

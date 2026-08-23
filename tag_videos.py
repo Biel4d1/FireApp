@@ -217,10 +217,9 @@ def generate_clip_embedding_and_tags(imgs, model_name='openai/clip-vit-base-patc
     return vector_list, top_tags
 
 
-def tag_file(filename, video_dir=VIDEO_DIR,
+def tag_file(filename, video_dir=VIDEO_DIR, topk=3, image_model_name='openai/clip-vit-base-patch32', audio_model_name=None):
     path = os.path.join(video_dir, filename)
     ensure_lightweight_video(path)
- topk=3, image_model_name='openai/clip-vit-base-patch32', audio_model_name=None):
     path = os.path.join(video_dir, filename)
     if not os.path.isfile(path):
         raise FileNotFoundError(f"video not found: {path}")

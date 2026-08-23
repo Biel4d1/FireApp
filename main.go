@@ -438,26 +438,28 @@ func personalizedFeedHandler(c *gin.Context) {
 	var hasEmbeddingCol bool
 	db.QueryRow("SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name='videos' AND column_name='embedding')").Scan(&hasEmbeddingCol)
 
-	var sqlQuery string
-	var params []interface{}
-
 	exclusionClause := ""
 	if len(seenIDs) > 0 {
 		placeholders := make([]string, len(seenIDs))
 		offset := 9
-
 		for i := range seenIDs {
 			placeholders[i] = fmt.Sprintf("$%d", offset+i)
 		}
 		exclusionClause = fmt.Sprintf(" AND v.id NOT IN (%s)", strings.Join(placeholders, ","))
 	}
 
-	sqlQuery = fmt.Sprintf(`
+	sqlQuery := fmt.Sprintf(`
 WITH user_liked_tags AS (
     SELECT string_to_array(string_agg(v_sub.tags, ','), ',') AS preferred_tags
     FROM interactions i
     JOIN videos v_sub ON i.video_id = v_sub.id
     WHERE i.user_id = $1 AND (i.watch_time_ms >= 3000 OR EXISTS(SELECT 1 FROM likes l WHERE l.user_id = $2 AND l.video_id = v_sub.id))
+),
+user_vector AS (
+    SELECT AVG(v_emb.embedding) AS avg_embed
+    FROM interactions i
+    JOIN videos v_emb ON i.video_id = v_emb.id
+    WHERE i.user_id = $1 AND v_emb.embedding IS NOT NULL AND (i.watch_time_ms >= 3000 OR EXISTS(SELECT 1 FROM likes l WHERE l.user_id = $2 AND l.video_id = v_emb.id))
 )
 SELECT 
   v.id, 
@@ -472,8 +474,15 @@ SELECT
   COALESCE(COUNT(DISTINCT c.id), 0) as comments_count,
   CASE WHEN EXISTS(SELECT 1 FROM likes lk WHERE lk.user_id = $3 AND lk.video_id = v.id) THEN 1 ELSE 0 END AS liked_score,
   CASE WHEN EXISTS(SELECT 1 FROM dislikes dk WHERE dk.user_id = $4 AND dk.video_id = v.id) THEN 1 ELSE 0 END AS disliked_score,
-  ((0.35 * (CASE WHEN COALESCE(max_watch.max_w,0) > 0 THEN CAST(COALESCE(user_watch.uw,0) AS FLOAT) / max_watch.max_w ELSE 0 END))
-   + (0.25 * (
+  ((0.35 * (
+      CASE 
+        WHEN (SELECT avg_embed FROM user_vector) IS NOT NULL AND v.embedding IS NOT NULL 
+        THEN (1.0 - LEAST(1.0, GREATEST(0.0, (v.embedding <-> (SELECT avg_embed FROM user_vector)))))
+        ELSE 0.5 
+      END
+   ))
+   + (0.20 * (CASE WHEN COALESCE(max_watch.max_w,0) > 0 THEN CAST(COALESCE(user_watch.uw,0) AS FLOAT) / max_watch.max_w ELSE 0 END))
+   + (0.15 * (
       CASE 
         WHEN v.tags IS NOT NULL AND v.tags != '' AND (SELECT preferred_tags FROM user_liked_tags) IS NOT NULL THEN
           LEAST(1.0, cardinality(
@@ -500,7 +509,7 @@ WHERE (v.is_published IS TRUE OR v.is_published IS NULL)%s
 GROUP BY v.id, u.username, u.profile_pic_url, max_watch.max_w, user_watch.uw
 ORDER BY weighted_score DESC, global_popularity DESC, v.id DESC`, exclusionClause)
 
-	params = []interface{}{userParam, userParam, userParam, userParam, userParam, userParam, userParam, userParam}
+	params := []interface{}{userParam, userParam, userParam, userParam, userParam, userParam, userParam, userParam}
 	for _, id := range seenIDs {
 		params = append(params, id)
 	}
@@ -521,20 +530,9 @@ ORDER BY weighted_score DESC, global_popularity DESC, v.id DESC`, exclusionClaus
 		var uploaderIDSql sql.NullInt64
 
 		if err := rows.Scan(
-			&id,
-			&filename,
-			&thumbnail,
-			&description,
-			&uploaderIDSql,
-			&username,
-			&profilePicUrl,
-			&tags,
-			&likesCount,
-			&commentsCount,
-			&likedScore,
-			&dislikedScore,
-			&weightedScore,
-			&globalPopularity,
+			&id, &filename, &thumbnail, &description, &uploaderIDSql, &username,
+			&profilePicUrl, &tags, &likesCount, &commentsCount, &likedScore,
+			&dislikedScore, &weightedScore, &globalPopularity,
 		); err != nil {
 			log.Printf("[FEED SCAN ERROR] %v", err)
 			continue
@@ -1100,6 +1098,7 @@ func main() {
 	syncRedisFromDB()
 
 	r := gin.Default()
+	r.MaxMultipartMemory = 100 << 20 // 100MB
 
 	corsConfig := cors.DefaultConfig()
 	corsConfig.AllowAllOrigins = true
@@ -1113,7 +1112,10 @@ func main() {
 	r.POST("/signup", signupHandler)
 	r.POST("/login", loginHandler)
 	r.GET("/me", tokenRequired(), meHandler)
-	r.POST("/upload", tokenRequired(), uploadHandler)
+	r.POST("/upload", tokenRequired(), func(c *gin.Context) {
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 100<<20) // 100MB
+		uploadHandler(c)
+	})
 	r.POST("/upload_profile_pic", tokenRequired(), uploadProfilePicHandler)
 	r.POST("/remove_profile_pic", tokenRequired(), removeProfilePicHandler)
 	r.POST("/record_interaction", tokenRequired(), recordInteractionHandler)
