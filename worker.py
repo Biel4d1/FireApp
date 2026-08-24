@@ -81,7 +81,7 @@ def run_worker():
                 args = payload.get("args", [])
                 print(f"Executing task: {func_name} with args: {args}")
                 if "background_run_tagger" in func_name:
-                    os.system(f"python tag_videos.py --video {args[0]}")
+                    os.system(f"python tag_videos.py --video uploads/videos/{args[0]}")
         except Exception as e:
             time.sleep(1)
 
