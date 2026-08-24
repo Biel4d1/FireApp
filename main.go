@@ -904,13 +904,17 @@ func recordInteractionHandler(c *gin.Context) {
 	}
 
 	var currentMs int
-	err := db.QueryRow("SELECT watch_time_ms FROM interactions WHERE user_id = $1 AND video_id = $2", userID, req.VideoID).Scan(&currentMs)
+	query := `
+		INSERT INTO interactions (user_id, video_id, watch_time_ms)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (user_id, video_id) 
+		DO UPDATE SET watch_time_ms = interactions.watch_time_ms + EXCLUDED.watch_time_ms
+		RETURNING watch_time_ms
+	`
+	err := db.QueryRow(query, userID, req.VideoID, req.WatchTimeMs).Scan(&currentMs)
 	if err != nil {
-		db.Exec("INSERT INTO interactions (user_id, video_id, watch_time_ms) VALUES ($1, $2, $3)", userID, req.VideoID, req.WatchTimeMs)
-		currentMs = req.WatchTimeMs
-	} else {
-		currentMs += req.WatchTimeMs
-		db.Exec("UPDATE interactions SET watch_time_ms = $1 WHERE user_id = $2 AND video_id = $3", currentMs, userID, req.VideoID)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("db error: %v", err)})
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "interaction recorded", "watch_time_ms": currentMs})
@@ -1069,7 +1073,9 @@ func getEnv(key, fallback string) string {
 func fetchTextVector(query string) string {
 	payload := map[string]string{"text": query}
 	body, _ := json.Marshal(payload)
-	resp, err := http.Post("http://worker:5001/embed", "application/json", bytes.NewBuffer(body))
+	
+	client := http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Post("http://worker:5001/embed", "application/json", bytes.NewBuffer(body))
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return ""
 	}
