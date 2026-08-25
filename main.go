@@ -1118,10 +1118,10 @@ func searchHandler(c *gin.Context) {
 			       COALESCE(v.tags, ''), COALESCE(v.likes_count, 0)
 			FROM videos v
 			LEFT JOIN users u ON v.uploader_id = u.id
-			WHERE (v.is_published IS TRUE OR v.is_published IS NULL) AND v.embedding IS NOT NULL
-			ORDER BY v.embedding <-> $1::vector ASC
+			WHERE (v.is_published IS TRUE OR v.is_published IS NULL)
+			ORDER BY (v.embedding <-> $1::vector) - (CASE WHEN v.tags ILIKE $2 OR v.description ILIKE $2 OR u.username ILIKE $2 THEN 0.3 ELSE 0.0 END) ASC
 			LIMIT 30
-		`, vecStr)
+		`, vecStr, searchPattern)
 	} else {
 		vRows, err = db.Query(`
 			SELECT v.id, v.filename, COALESCE(v.thumbnail, ''), COALESCE(v.description, ''), 
@@ -1129,8 +1129,11 @@ func searchHandler(c *gin.Context) {
 			       COALESCE(v.tags, ''), COALESCE(v.likes_count, 0)
 			FROM videos v
 			LEFT JOIN users u ON v.uploader_id = u.id
-			WHERE (v.tags ILIKE $1 OR v.description ILIKE $1) AND (v.is_published IS TRUE OR v.is_published IS NULL)
-			ORDER BY v.id DESC LIMIT 30
+			WHERE (v.tags ILIKE $1 OR v.description ILIKE $1 OR u.username ILIKE $1) AND (v.is_published IS TRUE OR v.is_published IS NULL)
+			ORDER BY 
+    (CASE WHEN v.tags ILIKE $1 THEN 0 WHEN v.description ILIKE $1 THEN 1 ELSE 2 END) ASC, 
+    v.id DESC 
+LIMIT 30
 		`, searchPattern)
 	}
 
@@ -1218,5 +1221,11 @@ func main() {
 	port := getEnv("PORT", "5000")
 	log.Printf("🔥 Server running on http://0.0.0.0:%s", port)
 	r.GET("/search", tokenRequired(), searchHandler)
+	r.POST("/admin/train", tokenRequired(), triggerTrainingHandler)
 	r.Run(":" + port)
+}
+
+func triggerTrainingHandler(c *gin.Context) {
+	enqueueRQTask("backend.background_run_trainer")
+	c.JSON(http.StatusOK, gin.H{"message": "In-app AI training enqueued asynchronously"})
 }

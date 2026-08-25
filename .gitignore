@@ -94,3 +94,4 @@ sample_videos/
 ingest.py
 uploads/
 .env
+custom_clip_weights/
