@@ -6,7 +6,7 @@ const TOKEN_KEY = 'SV_TOKEN';
 // Change this constant to point to your backend, e.g. http://192.168.1.5:5000
 // Replace with the URL returned by `npx localtunnel --port 8000` (example: https://funny-bears-jump.loca.lt)
 // Backend listens on port 5000 by default; include the port so requests reach the server on the LAN
-export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://dacnkipvwt.a.pinggy.link';
+export const API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://api.smartvideos.lat';
 
 // Set global axios defaults so all requests include the localtunnel reminder header
 axios.defaults.headers = axios.defaults.headers || ({} as any);
