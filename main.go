@@ -1075,7 +1075,7 @@ func fetchTextVector(query string) string {
 	body, _ := json.Marshal(payload)
 	
 	client := http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Post("http://worker:5001/embed", "application/json", bytes.NewBuffer(body))
+	resp, err := client.Post(fmt.Sprintf("%s/embed", getEnv("WORKER_SERVICE_URL", "http://worker:5001")), "application/json", bytes.NewBuffer(body))
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return ""
 	}
@@ -1167,7 +1167,7 @@ func searchHandler(c *gin.Context) {
 }
 
 func main() {
-	jwtSecret = []byte(getEnv("JWT_SECRET", "185fca44635612d1eeb60929f72254a184fcb1ae4e960d6c54375dee0e93babd"))
+	jwtSecret = []byte(os.Getenv("JWT_SECRET"))
 
 	log.Println("🚀 Initializing PostgreSQL and Redis connections...")
 	db = getDB()

@@ -4,13 +4,14 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "5000:5000"
+      - "${PORT:-5000}:5000"
     volumes:
-      - /mnt/storage/smartvideos/uploads:/backend/uploads
+      - ${UPLOADS_HOST_DIR:-/mnt/storage/smartvideos/uploads}:/backend/uploads
     environment:
-      - REDIS_URL=redis://redis:6379/0
-      - JWT_SECRET=185fca44635612d1eeb60929f72254a184fcb1ae4e960d6c54375dee0e93babd
-      - DATABASE_URL=postgresql://user:password@db:5432/smartvideos
+      - REDIS_URL=${REDIS_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - DATABASE_URL=${DATABASE_URL}
+      - WORKER_SERVICE_URL=${WORKER_SERVICE_URL:-http://worker:5001}
     depends_on:
       - redis
       - db
@@ -21,14 +22,14 @@ services:
       dockerfile: Dockerfile.worker
     user: "0:0"
     ports:
-      - "5001:5001"
+      - "${WORKER_PORT:-5001}:5001"
     command: python worker.py
     volumes:
       - .:/backend:z
-      - /mnt/storage/smartvideos/uploads:/app/uploads
+      - ${UPLOADS_HOST_DIR:-/mnt/storage/smartvideos/uploads}:/app/uploads
     environment:
-      - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=postgresql://user:password@db:5432/smartvideos
+      - REDIS_URL=${REDIS_URL}
+      - DATABASE_URL=${DATABASE_URL}
     depends_on:
       - redis
       - db
@@ -39,8 +40,8 @@ services:
       dockerfile: Dockerfile
     command: sh -c "while true; do ./sync_db; sleep 300; done"
     environment:
-      - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=postgresql://user:password@db:5432/smartvideos
+      - REDIS_URL=${REDIS_URL}
+      - DATABASE_URL=${DATABASE_URL}
     depends_on:
       - redis
       - db
@@ -48,7 +49,7 @@ services:
   tunnel:
     image: cloudflare/cloudflared:latest
     container_name: fireapp_tunnel
-    command: tunnel --no-autoupdate run --token eyJhIjoiMjY0MzgyOTE3OWM0ZDM3YjNjYTllODU3YWE4ODE4YmYiLCJ0IjoiZGU5MGExYjgtZDI1My00Yzc5LWE2OTktZjA2MWNhMTk4ZjhkIiwicyI6Ik0yRTRORFZpT1dVdE9USXhZUzAwTURCbUxUaG1NakV0WlRKaU1Ea3dNV0UzTWpVeCJ9
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
     restart: always
     depends_on:
       - web
@@ -64,9 +65,9 @@ services:
   db:
     image: pgvector/pgvector:pg15
     environment:
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=smartvideos
+      - POSTGRES_USER=${PGUSER}
+      - POSTGRES_PASSWORD=${PGPASSWORD}
+      - POSTGRES_DB=${PGDATABASE}
     volumes:
       - postgres_data:/var/lib/postgresql/data
 

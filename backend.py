@@ -2,7 +2,7 @@ import os
 import subprocess
 import psycopg2
 
-DB_URL = os.environ.get("DATABASE_URL", "postgresql://user:password@db:5432/smartvideos")
+DB_URL = os.environ.get("DATABASE_URL")
 
 def background_extract_and_save_thumbnail(video_path, video_id):
     """Extracts a thumbnail frame from an MP4 using FFmpeg."""

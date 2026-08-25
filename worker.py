@@ -64,7 +64,7 @@ def embed():
         return jsonify({'error': str(e)}), 500
 
 def run_flask():
-    app.run(host='0.0.0.0', port=5001)
+    app.run(host='0.0.0.0', port=int(os.getenv("WORKER_PORT", 5001)))
 
 threading.Thread(target=run_flask, daemon=True).start()
 

@@ -93,3 +93,4 @@ Thumbs.db
 sample_videos/
 ingest.py
 uploads/
+.env
