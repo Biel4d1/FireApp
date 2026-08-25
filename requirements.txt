@@ -4,11 +4,11 @@ PyJWT==2.8.0
 Werkzeug==3.0.1
 opencv-python
 transformers>=4.0.0
-torch
-torchaudio
 librosa
 soundfile
 Pillow
 psycopg2-binary
 redis>=4.0
 rq>=1.0
+openai-whisper
+pyacoustid

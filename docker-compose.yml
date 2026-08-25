@@ -27,6 +27,8 @@ services:
     volumes:
       - .:/backend:z
       - ${UPLOADS_HOST_DIR:-/mnt/storage/smartvideos/uploads}:/app/uploads
+      - ./.cache/huggingface:/root/.cache/huggingface
+      - ./.cache/whisper:/root/.cache/whisper
     environment:
       - REDIS_URL=${REDIS_URL}
       - DATABASE_URL=${DATABASE_URL}
