@@ -6,6 +6,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as MediaLibrary from 'expo-media-library';
 import * as Sharing from 'expo-sharing';
 import VideoPlayer from '../components/VideoPlayer';
+import Slider from '@react-native-community/slider';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import CommentModal from '../components/comment-modal';
@@ -40,10 +41,14 @@ function VideoDetailItem({ item, isFocused, containerHeight, onDownload, onComme
   const [isLikedByMe, setIsLikedByMe] = useState<boolean>(() => item?.is_liked ?? false);
   const [likesCount, setLikesCount] = useState<number>(() => item?.likes_count ?? 0);
   const serverCommentsInit = item?.comments_count ?? item?.comments ?? item?.comment_count ?? 0;
-  const storedCommentsInit = (useVideoStore().getVideo(item.id)?.comments_count) ?? 0;
+  const storedCommentsInit = (useVideoStore().getVideo(item?.id)?.comments_count) ?? 0;
   const [commentCount, setCommentCount] = useState<number>(() => Math.max(Number(storedCommentsInit ?? 0), Number(serverCommentsInit ?? 0)));
   const [isDislikedByMe, setIsDislikedByMe] = useState<boolean>(() => item?.is_disliked ?? false);
   const [dislikesCount, setDislikesCount] = useState<number>(() => item?.dislikes_count ?? 0);
+  const [showProgress, setShowProgress] = useState(false);
+  const [positionMs, setPositionMs] = useState(0);
+  const [durationMs, setDurationMs] = useState(1);
+  const [isSeeking, setIsSeeking] = useState(false);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [confirmVisible, setConfirmVisible] = useState<boolean>(false);
   const [confirmTitle, setConfirmTitle] = useState<string>('');
@@ -320,6 +325,8 @@ function VideoDetailItem({ item, isFocused, containerHeight, onDownload, onComme
         })() }}
         shouldPlay={isFocused}
         onDoubleTap={handleToggleLike}
+        onTap={() => setShowProgress(prev => !prev)}
+        onProgressUpdate={(pos, dur) => { if (!isSeeking) { setPositionMs(pos); setDurationMs(dur); } }}
         onLongPress={handleLongPress}
         onPlaybackStatusUpdate={onPlaybackStatusUpdate}
       />
@@ -384,6 +391,11 @@ function VideoDetailItem({ item, isFocused, containerHeight, onDownload, onComme
         </View>
       </View>
 
+      {showProgress && durationMs > 1000 && (
+        <View style={{ position: "absolute", left: 0, right: 0, bottom: 90, zIndex: 999, paddingHorizontal: 16, backgroundColor: "rgba(0,0,0,0.6)", borderRadius: 20, height: 40, justifyContent: "center" }}>
+          <Slider style={{ width: "100%", height: 40 }} minimumValue={0} maximumValue={durationMs} value={positionMs} minimumTrackTintColor="#FF4500" maximumTrackTintColor="rgba(255, 255, 255, 0.3)" thumbTintColor="#FF4500" onValueChange={(val) => { setIsSeeking(true); setPositionMs(val); }} onSlidingComplete={async (val) => { if (videoRef.current && typeof videoRef.current.setPositionAsync === "function") { await videoRef.current.setPositionAsync(val); } setIsSeeking(false); }} />
+        </View>
+      )}
       {commentsVisible && (
         <CommentModal visible={commentsVisible} videoId={item.id} onClose={() => setCommentsVisible(false)} onCommentsUpdated={handleCommentsUpdatedLocal} />
       )}
@@ -423,7 +435,7 @@ export default function SingleVideoScreen() {
 
   useEffect(() => {
     (async () => {
-      setLoading(true);
+      pauseAllExcept(null); try { pauseAllExcept(null); } catch (e) {}; setLoading(true);
       try {
         const token = await getToken();
         const userId = decodeTokenUserId(token || undefined);
@@ -615,7 +627,7 @@ export default function SingleVideoScreen() {
       snapToAlignment="start"
       onScroll={handleScroll}
       scrollEventThrottle={16}
-      initialScrollIndex={currentIndex}
+      initialScrollIndex={currentIndex >= 0 && currentIndex < videos.length ? currentIndex : 0}
       getItemLayout={(data, index) => ({
         length: containerHeight,
         offset: containerHeight * index,

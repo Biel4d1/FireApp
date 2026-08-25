@@ -216,6 +216,10 @@ function VideoDetailItem({ item, index, isFocused, shouldLoadSource, containerHe
   const [commentCount, setCommentCount] = useState<number>(() => Math.max(Number(storedCommentsInit ?? 0), Number(serverCommentsInit ?? 0)));
   const [isDislikedByMe, setIsDislikedByMe] = useState<boolean>(() => item?.is_disliked ?? false);
   const [dislikesCount, setDislikesCount] = useState<number>(() => item?.dislikes_count ?? 0);
+  const [showProgress, setShowProgress] = useState(false);
+  const [positionMs, setPositionMs] = useState(0);
+  const [durationMs, setDurationMs] = useState(1);
+  const [isSeeking, setIsSeeking] = useState(false);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [confirmTitle, setConfirmTitle] = useState<string | undefined>(undefined);
@@ -468,6 +472,8 @@ function VideoDetailItem({ item, index, isFocused, shouldLoadSource, containerHe
     posterSource={thumbnailUri ? { uri: thumbnailUri } : undefined}
     shouldPlay={isFocused && shouldLoadSource}
     onDoubleTap={() => { try { onToggleLike?.(item.id); } catch (e) {} }}
+    onTap={() => setShowProgress(prev => !prev)}
+    onProgressUpdate={(pos, dur) => { if (!isSeeking) { setPositionMs(pos); setDurationMs(dur); } }}
     onLongPress={() => {
       try {
         const isOwner = authUser && item?.uploader_id && authUser.id === item.uploader_id;
@@ -553,6 +559,11 @@ function VideoDetailItem({ item, index, isFocused, shouldLoadSource, containerHe
     </View>
     </View>
 
+    {showProgress && durationMs > 1000 && (
+      <View style={{ position: "absolute", left: 0, right: 0, bottom: 90, zIndex: 999, paddingHorizontal: 16, backgroundColor: "rgba(0,0,0,0.6)", borderRadius: 20, height: 40, justifyContent: "center" }}>
+        <Slider style={{ width: "100%", height: 40 }} minimumValue={0} maximumValue={durationMs} value={positionMs} minimumTrackTintColor="#FF4500" maximumTrackTintColor="rgba(255, 255, 255, 0.3)" thumbTintColor="#FF4500" onValueChange={(val) => { setIsSeeking(true); setPositionMs(val); }} onSlidingComplete={async (val) => { if (videoRef.current && typeof videoRef.current.setPositionAsync === "function") { await videoRef.current.setPositionAsync(val); } setIsSeeking(false); }} />
+      </View>
+    )}
     {commentsVisible && (
       <CommentModal visible={commentsVisible} videoId={item.id} onClose={() => setCommentsVisible(false)} onCommentsUpdated={(videoId, newCount) => {
         setCommentCount(newCount);

@@ -20,6 +20,7 @@ import apiClient from '../lib/api';
 import { AuthContext } from '../lib/auth';
 import { useVideoStore } from '../lib/videoStore';
 import { useToast } from '../components/Toast';
+import { pauseAllExcept } from '../lib/playerRegistry';
 
 function VideoCard({
   item,
@@ -285,6 +286,7 @@ export default function ExploreScreen() {
 
   const handleNavigate = useCallback(
     (item: any) => {
+      try { pauseAllExcept(null); } catch (e) {};
       router.push({
         pathname: '/video/[id]',
         params: {

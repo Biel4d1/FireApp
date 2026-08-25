@@ -9,19 +9,22 @@ interface VideoPlayerProps {
     thumbnail_url?: string;
   };
   shouldPlay: boolean;
+  onProgressUpdate?: (pos: number, dur: number) => void;
+  onToggleControls?: () => void;
 }
 
-export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, shouldPlay }) => {
+export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, shouldPlay, onProgressUpdate, onToggleControls }) => {
   const videoRef = useRef<Video>(null);
   const [userPaused, setUserPaused] = useState(false);
 
   const togglePlay = () => {
+    onToggleControls?.();
     setUserPaused(!userPaused);
   };
 
   return (
     <View style={styles.container}>
-      <Pressable style={styles.touchArea} onPress={togglePlay}>
+      <Pressable style={styles.touchArea} onPress={togglePlay} pointerEvents="box-none">
         <Video
           ref={videoRef}
           source={{ uri: video.url }}
@@ -31,9 +34,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ video, shouldPlay }) =
           style={styles.video}
           resizeMode={ResizeMode.COVER}
           shouldPlay={shouldPlay && !userPaused}
-          isLooping={true}
+          isLooping
+        useNativeControls={false}={true}
           useNativeControls={false}
           progressUpdateIntervalMillis={250}
+          onPlaybackStatusUpdate={(s) => { if (s.isLoaded) { onProgressUpdate?.(s.positionMillis || 0, s.durationMillis || 1); } }}
         />
       </Pressable>
     </View>

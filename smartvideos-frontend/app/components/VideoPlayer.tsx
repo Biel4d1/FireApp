@@ -20,6 +20,8 @@ type Props = {
   onDoubleTap?: () => void;
   onUserToggle?: (paused: boolean) => void;
   playerRef?: React.MutableRefObject<any | null>;
+  onProgressUpdate?: (pos: number, dur: number) => void;
+  onToggleControls?: () => void;
 };
 
 export default function VideoPlayer({ id, source, posterSource, style, shouldPlay = false, isMuted = false, progressUpdateIntervalMillis = 500, onPlaybackStatusUpdate, onReady, onPress, onLongPress, onTap, onDoubleTap, onUserToggle, playerRef }: Props) {
@@ -290,7 +292,8 @@ export default function VideoPlayer({ id, source, posterSource, style, shouldPla
             }
           } catch (e) {}
 
-          try { if (onPlaybackStatusUpdate) onPlaybackStatusUpdate(s); } catch (e) {}
+          try { if (onPlaybackStatusUpdate) if (s && s.isLoaded) { onProgressUpdate?.(s.positionMillis || 0, s.durationMillis || 1); }
+          try { if (onPlaybackStatusUpdate) onPlaybackStatusUpdate(s); } catch (e) {} } catch (e) {}
         }}
         onLoad={() => { 
           try { 
