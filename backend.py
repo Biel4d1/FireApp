@@ -1,6 +1,7 @@
 import os
 import subprocess
 import psycopg2
+from tag_videos import tag_file
 
 DB_URL = os.environ.get("DATABASE_URL")
 
@@ -31,15 +32,9 @@ def background_extract_and_save_thumbnail(video_path, video_id):
         print(f"❌ Error generating thumbnail for video #{video_id}: {e}")
 
 def background_run_tagger(filename, video_id):
-    """Assigns tags to uploaded videos in PostgreSQL."""
+    """Assigns tags to uploaded videos in PostgreSQL via CLIP/AST."""
     try:
-        sample_tags = "video,content,test"
-        conn = psycopg2.connect(DB_URL)
-        cur = conn.cursor()
-        cur.execute("UPDATE videos SET tags = %s WHERE id = %s", (sample_tags, video_id))
-        conn.commit()
-        cur.close()
-        conn.close()
-        print(f"🏷️ Assigned tags to video #{video_id}: {sample_tags}")
+        tags = tag_file(filename)
+        print(f"🏷️ Assigned tags to video #{video_id}: {tags}")
     except Exception as e:
         print(f"❌ Error running tagger for video #{video_id}: {e}")

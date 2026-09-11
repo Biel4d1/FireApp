@@ -3,6 +3,9 @@ import sys
 import gc
 import threading
 import time
+import json
+import importlib
+import redis
 from flask import Flask, request, jsonify
 from transformers import CLIPModel, CLIPProcessor
 import torch
@@ -37,8 +40,41 @@ def auto_train_scheduler():
         time.sleep(7200)
         run_training_pipeline()
 
-# Start background 2-hour scheduler
+def redis_task_worker():
+    """Polls Redis 'tasks' queue indefinitely with automatic reconnection."""
+    redis_url = os.environ.get("REDIS_URL", "redis://redis:6379/0")
+    
+    while True:
+        try:
+            r = redis.Redis.from_url(redis_url, socket_timeout=10, socket_keepalive=True)
+            print("⚡ [REDIS-WORKER] Connected and listening to 'tasks' queue...")
+            while True:
+                try:
+                    item = r.blpop("tasks", timeout=5)
+                    if not item:
+                        continue
+                    _, data = item
+                    payload = json.loads(data.decode("utf-8"))
+                    func_path = payload.get("func_name")
+                    args = payload.get("args", [])
+
+                    module_name, func_name = func_path.rsplit(".", 1)
+                    mod = importlib.import_module(module_name)
+                    func = getattr(mod, func_name)
+
+                    print(f"🚀 [REDIS-WORKER] Executing {func_name} with args: {args}")
+                    func(*args)
+                except redis.exceptions.TimeoutError:
+                    continue
+                except Exception as task_err:
+                    print(f"⚠️ [REDIS-WORKER] Task execution error: {task_err}")
+        except Exception as conn_err:
+            print(f"⚠️ [REDIS-WORKER] Redis connection lost: {conn_err}. Retrying in 5 seconds...")
+            time.sleep(5)
+
+# Start background threads
 threading.Thread(target=auto_train_scheduler, daemon=True).start()
+threading.Thread(target=redis_task_worker, daemon=True).start()
 
 @app.route('/embed', methods=['POST'])
 def embed():
@@ -50,7 +86,6 @@ def embed():
     inputs = _clip_processor(text=[text], return_tensors="pt", padding=True)
     with torch.no_grad():
         outputs = _clip_model.get_text_features(**inputs)
-        # Handle both raw Tensor and BaseModelOutputWithPooling objects safely
         if hasattr(outputs, "text_embeds"):
             embeds = outputs.text_embeds
         elif hasattr(outputs, "pooler_output"):
@@ -58,7 +93,6 @@ def embed():
         else:
             embeds = outputs
 
-        # L2 Normalize vector for cosine distance calculations
         embeds = embeds / embeds.norm(p=2, dim=-1, keepdim=True)
 
     vec = embeds[0].tolist()
