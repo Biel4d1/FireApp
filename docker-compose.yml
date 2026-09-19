@@ -1,0 +1,78 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${PORT:-5000}:5000"
+    volumes:
+      - ${UPLOADS_HOST_DIR:-/mnt/storage/smartvideos/uploads}:/backend/uploads
+    environment:
+      - REDIS_URL=${REDIS_URL}
+      - JWT_SECRET=${JWT_SECRET}
+      - DATABASE_URL=${DATABASE_URL}
+      - WORKER_SERVICE_URL=${WORKER_SERVICE_URL:-http://worker:5001}
+    depends_on:
+      - redis
+      - db
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    user: "0:0"
+    ports:
+      - "${WORKER_PORT:-5001}:5001"
+    command: python worker.py
+    volumes:
+      - .:/backend:z
+      - ${UPLOADS_HOST_DIR:-/mnt/storage/smartvideos/uploads}:/app/uploads
+      - ./.cache/huggingface:/root/.cache/huggingface
+      - ./.cache/whisper:/root/.cache/whisper
+    environment:
+      - REDIS_URL=${REDIS_URL}
+      - DATABASE_URL=${DATABASE_URL}
+    depends_on:
+      - redis
+      - db
+
+  db-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: sh -c "while true; do ./sync_db; sleep 300; done"
+    environment:
+      - REDIS_URL=${REDIS_URL}
+      - DATABASE_URL=${DATABASE_URL}
+    depends_on:
+      - redis
+      - db
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: fireapp_tunnel
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    restart: always
+    depends_on:
+      - web
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+  db:
+    image: pgvector/pgvector:pg15
+    environment:
+      - POSTGRES_USER=${PGUSER}
+      - POSTGRES_PASSWORD=${PGPASSWORD}
+      - POSTGRES_DB=${PGDATABASE}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+  redis_data:
