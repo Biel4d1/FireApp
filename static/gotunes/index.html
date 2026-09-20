@@ -3,150 +3,372 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>goTunes | Shared Auth Studio</title>
+    <title>goTunes | Audio Library</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0c; color: #f3f4f6; margin: 0; padding: 30px 20px; display: flex; flex-direction: column; align-items: center; }
-        .container { max-width: 680px; width: 100%; background: #141417; border: 1px solid #27272a; border-radius: 12px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
-        .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-        h1 { font-size: 1.8rem; margin: 0; background: linear-gradient(45deg, #00d2ff, #3a7bd5); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        p { color: #9ca3af; margin-bottom: 20px; font-size: 0.9rem; }
-        .auth-bar { background: #1c1c21; border: 1px solid #27272a; padding: 12px 16px; border-radius: 8px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; }
-        .auth-inputs { display: flex; gap: 8px; width: 100%; }
-        .auth-inputs input { background: #0a0a0c; border: 1px solid #3f3f46; color: #fff; padding: 8px 12px; border-radius: 6px; font-size: 0.85rem; width: 35%; }
-        .auth-btn { background: #3b82f6; border: none; color: white; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem; }
-        .control-group { margin-bottom: 20px; }
-        label { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 8px; }
-        input[type=range] { width: 100%; height: 6px; background: #27272a; border-radius: 3px; outline: none; -webkit-appearance: none; }
-        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #00d2ff; cursor: pointer; }
-        .btn { display: block; width: 100%; padding: 12px; background: linear-gradient(45deg, #00d2ff, #3a7bd5); border: none; border-radius: 8px; color: #fff; font-size: 1rem; font-weight: 700; cursor: pointer; }
-        .status { margin-top: 10px; text-align: center; font-size: 0.85rem; color: #10b981; }
-        .recs-title { margin-top: 30px; border-top: 1px solid #27272a; padding-top: 20px; font-size: 1.1rem; font-weight: 600; }
-        .rec-card { background: #1c1c21; padding: 14px; border-radius: 8px; margin-top: 12px; border: 1px solid #27272a; }
-        .rec-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
-        audio { width: 100%; height: 32px; margin-top: 8px; }
+        :root {
+            --bg-color: #0b0c10;
+            --card-bg: #15161e;
+            --card-border: #232533;
+            --accent: #00d2ff;
+            --accent-glow: rgba(0, 210, 255, 0.15);
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding-bottom: 110px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .header {
+            width: 100%;
+            max-width: 900px;
+            padding: 30px 20px 20px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .brand h1 {
+            font-size: 1.8rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #00d2ff, #3a7bd5);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .brand p {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .auth-box {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 10px;
+            padding: 8px 12px;
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .auth-box input {
+            background: #0a0a0c;
+            border: 1px solid #2d2f3e;
+            color: #fff;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            outline: none;
+            width: 110px;
+        }
+
+        .auth-box button {
+            background: var(--accent);
+            color: #000;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+
+        .auth-box button:hover { opacity: 0.9; }
+
+        .main-container {
+            width: 100%;
+            max-width: 900px;
+            padding: 0 20px;
+        }
+
+        .controls-bar {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+        }
+
+        .search-input {
+            flex: 1;
+            min-width: 200px;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 10px;
+            padding: 12px 16px;
+            color: #fff;
+            font-size: 0.9rem;
+            outline: none;
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            padding: 0 16px;
+            border-radius: 10px;
+        }
+
+        .filter-slider {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .filter-slider input[type=range] {
+            width: 80px;
+            accent-color: var(--accent);
+        }
+
+        .track-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 16px;
+        }
+
+        .track-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 12px;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: transform 0.2s, border-color 0.2s;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .track-card:hover {
+            transform: translateY(-2px);
+            border-color: #3b3e54;
+        }
+
+        .track-card.active {
+            border-color: var(--accent);
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
+
+        .track-info {
+            margin-bottom: 12px;
+        }
+
+        .track-title {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: var(--text-main);
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .track-meta {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            display: flex;
+            gap: 10px;
+        }
+
+        .play-btn {
+            background: #232533;
+            color: var(--text-main);
+            border: none;
+            padding: 8px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .track-card.active .play-btn {
+            background: var(--accent);
+            color: #000;
+        }
+
+        /* Fixed Bottom Player */
+        .player-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(21, 22, 30, 0.95);
+            backdrop-filter: blur(12px);
+            border-top: 1px solid var(--card-border);
+            padding: 15px 30px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            z-index: 100;
+        }
+
+        .now-playing {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            width: 30%;
+        }
+
+        .now-playing-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .now-playing-sub {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .player-controls {
+            width: 40%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+
+        audio {
+            width: 100%;
+            height: 36px;
+        }
+
+        .status-pill {
+            font-size: 0.75rem;
+            padding: 4px 10px;
+            border-radius: 20px;
+            background: #1a1c24;
+            color: var(--text-muted);
+            border: 1px solid var(--card-border);
+        }
+
+        .status-pill.online {
+            color: #10b981;
+            border-color: rgba(16, 185, 129, 0.3);
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header-bar">
-            <h1>goTunes Studio</h1>
-            <span id="userBadge" style="font-size: 0.85rem; color: #10b981; font-weight: 600;">Guest Mode</span>
-        </div>
-        <p>Personalized G Minor Procedural Synth & Extracted MP3 Matching Engine</p>
 
-        <div class="auth-bar" id="authBar">
-            <div id="loggedOutState" class="auth-inputs">
+    <div class="header">
+        <div class="brand">
+            <h1>goTunes Library</h1>
+            <p>Extracted Audio Tracks & Recommendation Engine</p>
+        </div>
+        <div class="auth-box" id="authBox">
+            <div id="loggedOut" style="display: flex; gap: 6px;">
                 <input type="text" id="username" placeholder="Username">
                 <input type="password" id="password" placeholder="Password">
-                <button class="auth-btn" onclick="login()">Login</button>
-                <button class="auth-btn" style="background:#10b981;" onclick="signup()">Sign Up</button>
+                <button onclick="login()">Login</button>
             </div>
-            <div id="loggedInState" style="display:none; width:100%; justify-content:space-between; align-items:center;">
-                <span id="welcomeMsg" style="font-size:0.9rem; color:#e5e7eb; font-weight:600;"></span>
-                <button class="auth-btn" style="background:#ef4444;" onclick="logout()">Logout</button>
+            <div id="loggedIn" style="display: none; align-items: center; gap: 10px;">
+                <span id="userTag" style="font-size: 0.85rem; font-weight: 600;"></span>
+                <button onclick="logout()" style="background: #ef4444; color: #fff;">Logout</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="controls-bar">
+            <input type="text" id="searchInput" class="search-input" placeholder="Search extracted audio by name, tag, or description..." oninput="filterTracks()">
+            
+            <div class="filter-group">
+                <div class="filter-slider">
+                    <span>Brightness</span>
+                    <input type="range" id="valence" min="0.1" max="1.0" step="0.05" value="0.50" onchange="loadRecommendations()">
+                </div>
+                <div class="filter-slider">
+                    <span>Energy</span>
+                    <input type="range" id="intensity" min="0.1" max="1.0" step="0.05" value="0.50" onchange="loadRecommendations()">
+                </div>
             </div>
         </div>
 
-        <button id="streamBtn" class="btn">Start Audio Stream</button>
+        <div id="trackGrid" class="track-grid">
+            <p style="color: var(--text-muted); font-size: 0.85rem;">Loading audio library...</p>
+        </div>
+    </div>
 
-        <div style="margin-top: 25px;">
-            <div class="control-group">
-                <label>Valence (Filter Cutoff) <span id="vVal">0.50</span></label>
-                <input type="range" id="valence" min="0.1" max="1.0" step="0.05" value="0.50">
-            </div>
-            <div class="control-group">
-                <label>Intensity (Volume/Gain) <span id="iVal">0.50</span></label>
-                <input type="range" id="intensity" min="0.1" max="1.0" step="0.05" value="0.50">
+    <div class="player-bar">
+        <div class="now-playing">
+            <div>
+                <div id="currentTitle" class="now-playing-title">No Track Selected</div>
+                <div id="currentSub" class="now-playing-sub">Select a track from the library</div>
             </div>
         </div>
+        
+        <div class="player-controls">
+            <audio id="globalAudio" controls src=""></audio>
+        </div>
 
-        <div id="status" class="status">Stream Inactive</div>
-
-        <div class="recs-title">Recommended Videos & Extracted Audio Tracks</div>
-        <div id="recsList">
-            <p style="color: #666; font-size: 0.85rem;">Adjust sliders or sign in to discover matching tracks...</p>
+        <div>
+            <span id="statusBadge" class="status-pill">Guest Mode</span>
         </div>
     </div>
 
     <script>
-        let audioCtx, isPlaying = false;
-        const API_BASE = window.location.origin;
+        let tracksData = [];
+        let activeVideoId = null;
+        let listenStartTime = 0;
 
         function updateAuthUI() {
             const token = localStorage.getItem('token');
             if (token) {
-                document.getElementById('loggedOutState').style.display = 'none';
-                document.getElementById('loggedInState').style.display = 'flex';
-                document.getElementById('userBadge').innerText = 'Account Linked';
+                document.getElementById('loggedOut').style.display = 'none';
+                document.getElementById('loggedIn').style.display = 'flex';
+                document.getElementById('statusBadge').innerText = 'Account Linked';
+                document.getElementById('statusBadge').classList.add('online');
                 fetchUserProfile();
             } else {
-                document.getElementById('loggedOutState').style.display = 'flex';
-                document.getElementById('loggedInState').style.display = 'none';
-                document.getElementById('userBadge').innerText = 'Guest Mode';
+                document.getElementById('loggedOut').style.display = 'flex';
+                document.getElementById('loggedIn').style.display = 'none';
+                document.getElementById('statusBadge').innerText = 'Guest Mode';
+                document.getElementById('statusBadge').classList.remove('online');
             }
         }
 
         async function login() {
             const u = document.getElementById('username').value.trim();
             const p = document.getElementById('password').value.trim();
-            if (!u || !p) { alert('Please enter username and password'); return; }
-
-            document.getElementById('status').innerText = 'Logging in...';
+            if (!u || !p) return;
 
             try {
-                const res = await fetch(`${API_BASE}/login`, {
+                const res = await fetch('/login', {
                     method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username: u, password: p })
                 });
-                
                 const data = await res.json();
                 if (res.ok && data.token) {
                     localStorage.setItem('token', data.token);
-                    document.getElementById('status').innerText = 'Logged in successfully!';
                     updateAuthUI();
                 } else {
-                    document.getElementById('status').innerText = 'Login Failed: ' + (data.error || 'Invalid credentials');
+                    alert('Login failed: ' + (data.error || 'Invalid credentials'));
                 }
-            } catch (err) {
-                console.error('Login error details:', err);
-                document.getElementById('status').innerText = 'Network error: ' + err.message;
-            }
-        }
-
-        async function signup() {
-            const u = document.getElementById('username').value.trim();
-            const p = document.getElementById('password').value.trim();
-            if (!u || !p) { alert('Please enter username and password'); return; }
-
-            document.getElementById('status').innerText = 'Creating account...';
-
-            try {
-                const res = await fetch(`${API_BASE}/signup`, {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json'
-                    },
-                    body: JSON.stringify({ username: u, password: p })
-                });
-                const data = await res.json();
-                if (res.ok) {
-                    login();
-                } else {
-                    document.getElementById('status').innerText = 'Signup Failed: ' + (data.error || 'User exists');
-                }
-            } catch (err) {
-                document.getElementById('status').innerText = 'Network error during signup: ' + err.message;
-            }
+            } catch (e) { alert('Network error during login'); }
         }
 
         function logout() {
             localStorage.removeItem('token');
-            document.getElementById('status').innerText = 'Logged out';
             updateAuthUI();
         }
 
@@ -155,147 +377,110 @@
             if (!token) return;
 
             try {
-                const meRes = await fetch(`${API_BASE}/me`, { 
-                    headers: { 'Authorization': `Bearer ${token}` } 
-                });
+                const meRes = await fetch('/me', { headers: { 'Authorization': `Bearer ${token}` } });
                 if (meRes.ok) {
                     const meData = await meRes.json();
-                    document.getElementById('welcomeMsg').innerText = `@${meData.user.username}`;
+                    document.getElementById('userTag').innerText = `@${meData.user.username}`;
                 }
 
-                const res = await fetch(`${API_BASE}/api/user/audio-profile`, { 
-                    headers: { 'Authorization': `Bearer ${token}` } 
-                });
+                const res = await fetch('/api/user/audio-profile', { headers: { 'Authorization': `Bearer ${token}` } });
                 if (res.ok) {
                     const data = await res.json();
                     document.getElementById('valence').value = data.preferred_valence;
                     document.getElementById('intensity').value = data.preferred_intensity;
-                    updateParams();
+                    loadRecommendations();
                 }
-            } catch (e) { console.warn('Profile sync error:', e); }
+            } catch (e) { console.warn('Profile sync warning:', e); }
         }
 
-        document.getElementById('streamBtn').addEventListener('click', async () => {
-            if (isPlaying) return;
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
-            document.getElementById('status').innerText = 'Connecting to procedural stream...';
+        async function loadRecommendations() {
+            const valence = document.getElementById('valence').value;
+            const intensity = document.getElementById('intensity').value;
 
             try {
-                const response = await fetch(`${API_BASE}/stream/procedural`);
-                const reader = response.body.getReader();
-                isPlaying = true;
-                document.getElementById('streamBtn').disabled = true;
-                document.getElementById('status').innerText = 'Streaming Live Audio';
-
-                let buffer = new Uint8Array(0);
-
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-
-                    let newBuffer = new Uint8Array(buffer.length + value.length);
-                    newBuffer.set(buffer);
-                    newBuffer.set(value, buffer.length);
-                    buffer = newBuffer;
-
-                    while (buffer.length >= 8820) { 
-                        let pcmChunk = buffer.slice(0, 8820);
-                        buffer = buffer.slice(8820);
-
-                        let audioBuffer = audioCtx.createBuffer(1, 44100 * 0.1, 44100);
-                        let channelData = audioBuffer.getChannelData(0);
-                        let dataView = new DataView(pcmChunk.buffer, pcmChunk.byteOffset, pcmChunk.byteLength);
-
-                        for (let i = 0; i < 44100 * 0.1; i++) {
-                            let int16 = dataView.getInt16(i * 2, true);
-                            channelData[i] = int16 / 32768.0;
-                        }
-
-                        let source = audioCtx.createBufferSource();
-                        source.buffer = audioBuffer;
-                        source.connect(audioCtx.destination);
-                        source.start();
-                    }
-                }
-            } catch (err) {
-                document.getElementById('status').innerText = 'Stream error: ' + err.message;
-            }
-        });
-
-        async function fetchRecommendations(valence, intensity) {
-            try {
-                const res = await fetch(`${API_BASE}/api/recommendations/by-audio?valence=${valence}&intensity=${intensity}`);
+                const res = await fetch(`/api/recommendations/by-audio?valence=${valence}&intensity=${intensity}`);
                 if (!res.ok) return;
                 const data = await res.json();
-                
-                const recsDiv = document.getElementById('recsList');
-                if (!data.recommended_videos || data.recommended_videos.length === 0) {
-                    recsDiv.innerHTML = '<p style="color:#666; font-size:0.85rem;">No matching video MP3s found yet.</p>';
-                    return;
-                }
+                tracksData = data.recommended_videos || [];
+                renderGrid(tracksData);
+            } catch (e) { console.warn('Failed to fetch library:', e); }
+        }
 
-                recsDiv.innerHTML = data.recommended_videos.map(v => `
-                    <div class="rec-card">
-                        <div class="rec-header">
-                            <span style="font-weight:600; color:#e5e7eb;">${v.description || v.filename}</span>
-                            <a href="/video/${v.filename}" target="_blank" style="color:#00d2ff; text-decoration:none; font-size:0.85rem;">Watch Video ↗</a>
+        function renderGrid(tracks) {
+            const grid = document.getElementById('trackGrid');
+            if (!tracks || tracks.length === 0) {
+                grid.innerHTML = '<p style="color: var(--text-muted); font-size: 0.85rem;">No matching audio tracks found.</p>';
+                return;
+            }
+
+            grid.innerHTML = tracks.map(t => `
+                <div class="track-card ${activeVideoId === t.id ? 'active' : ''}" onclick="playTrack(${t.id}, '${t.description || t.filename}', '/${t.mp3_path}')">
+                    <div class="track-info">
+                        <div class="track-title">${t.description || t.filename}</div>
+                        <div class="track-meta">
+                            <span>Valence: ${t.valence.toFixed(2)}</span>
+                            <span>Intensity: ${t.intensity.toFixed(2)}</span>
                         </div>
-                        <audio controls data-video-id="${v.id}" src="/${v.mp3_path}"></audio>
+                        ${t.tags ? `<div style="font-size:0.7rem; color:#00d2ff; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">🏷 ${t.tags}</div>` : ''}
                     </div>
-                `).join('');
-
-                setTimeout(attachAudioTrackers, 500);
-            } catch (e) { console.warn('Failed to load recommendations:', e); }
+                    <button class="play-btn">
+                        ${activeVideoId === t.id ? '▶ Playing' : '▶ Play Track'}
+                    </button>
+                </div>
+            `).join('');
         }
 
-        function attachAudioTrackers() {
-            const token = localStorage.getItem('token');
-            if (!token) return;
-
-            document.querySelectorAll('.rec-card audio').forEach(audioEl => {
-                let startTime = 0;
-                audioEl.addEventListener('play', () => { startTime = Date.now(); });
-                audioEl.addEventListener('pause', () => {
-                    if (startTime > 0) {
-                        const listenMs = Date.now() - startTime;
-                        const videoId = audioEl.getAttribute('data-video-id');
-                        if (videoId) {
-                            fetch(`${API_BASE}/api/gotunes/record-listen`, {
-                                method: 'POST',
-                                headers: { 
-                                    'Content-Type': 'application/json',
-                                    'Authorization': `Bearer ${token}`
-                                },
-                                body: JSON.stringify({ video_id: parseInt(videoId), listen_ms: listenMs })
-                            });
-                        }
-                        startTime = 0;
-                    }
-                });
-            });
+        function filterTracks() {
+            const q = document.getElementById('searchInput').value.toLowerCase();
+            const filtered = tracksData.filter(t => 
+                (t.description && t.description.toLowerCase().includes(q)) ||
+                (t.filename && t.filename.toLowerCase().includes(q)) ||
+                (t.tags && t.tags.toLowerCase().includes(q))
+            );
+            renderGrid(filtered);
         }
 
-        async function updateParams() {
-            const valence = parseFloat(document.getElementById('valence').value);
-            const intensity = parseFloat(document.getElementById('intensity').value);
+        function playTrack(id, title, mp3Url) {
+            recordListenDuration();
 
-            document.getElementById('vVal').innerText = valence.toFixed(2);
-            document.getElementById('iVal').innerText = intensity.toFixed(2);
+            activeVideoId = id;
+            listenStartTime = Date.now();
 
-            await fetch(`${API_BASE}/api/audio/parameters`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ valence, intensity })
-            });
+            document.getElementById('currentTitle').innerText = title;
+            document.getElementById('currentSub').innerText = `Track ID #${id}`;
 
-            fetchRecommendations(valence, intensity);
+            const player = document.getElementById('globalAudio');
+            player.src = mp3Url;
+            player.play();
+
+            renderGrid(tracksData);
         }
 
-        ['valence', 'intensity'].forEach(id => {
-            document.getElementById(id).addEventListener('input', updateParams);
-        });
+        function recordListenDuration() {
+            if (activeVideoId && listenStartTime > 0) {
+                const listenMs = Date.now() - listenStartTime;
+                const token = localStorage.getItem('token');
+
+                if (token && listenMs > 1000) {
+                    fetch('/api/gotunes/record-listen', {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({ video_id: activeVideoId, listen_ms: listenMs })
+                    });
+                }
+            }
+            listenStartTime = 0;
+        }
+
+        const player = document.getElementById('globalAudio');
+        player.addEventListener('pause', recordListenDuration);
+        player.addEventListener('ended', recordListenDuration);
 
         updateAuthUI();
+        loadRecommendations();
     </script>
 </body>
 </html>

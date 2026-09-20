@@ -16,7 +16,7 @@ RUN go mod download
 RUN go mod tidy
 
 # Build web server and db-sync binaries
-RUN CGO_ENABLED=0 GOOS=linux go build -o server main.go stream.go init_db.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o server main.go init_db.go
 RUN CGO_ENABLED=0 GOOS=linux go build -o sync_db sync_db.go
 
 # Stage 2: Create runtime container

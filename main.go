@@ -17,7 +17,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Biel4d1/goTunes/synth"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -566,20 +565,20 @@ ORDER BY weighted_score DESC, global_popularity DESC, v.id DESC`, exclusionClaus
 		}
 
 		videos = append(videos, gin.H{
-			"id":             id,
-			"filename":       filename,
-			"thumbnail":      formatUploadPath(thumbnail),
-			"description":    description,
-			"uploader_id":    uploaderID,
-			"username":       username,
+			"id":              id,
+			"filename":        filename,
+			"thumbnail":       formatUploadPath(thumbnail),
+			"description":     description,
+			"uploader_id":     uploaderID,
+			"username":        username,
 			"profile_pic_url": formatUploadPath(profilePicUrl),
-			"tags":           tags,
-			"likes_count":    finalLikes,
-			"comments_count": commentsCount,
-			"is_liked":       isLikedFlag,
-			"is_disliked":    isDislikedFlag,
-			"dislikes_count": finalDislikes,
-			"weighted_score": weightedScore,
+			"tags":            tags,
+			"likes_count":     finalLikes,
+			"comments_count":  commentsCount,
+			"is_liked":        isLikedFlag,
+			"is_disliked":     isDislikedFlag,
+			"dislikes_count":  finalDislikes,
+			"weighted_score":  weightedScore,
 		})
 	}
 
@@ -1092,7 +1091,7 @@ func getEnv(key, fallback string) string {
 func fetchTextVector(query string) string {
 	payload := map[string]string{"text": query}
 	body, _ := json.Marshal(payload)
-	
+
 	client := http.Client{Timeout: 3 * time.Second}
 	resp, err := client.Post(fmt.Sprintf("%s/embed", getEnv("WORKER_SERVICE_URL", "http://worker:5001")), "application/json", bytes.NewBuffer(body))
 	if err != nil || resp.StatusCode != http.StatusOK {
@@ -1200,14 +1199,7 @@ func main() {
 	ensureIsPublishedColumn()
 
 	rdb = initRedis()
-	var audioEngine *ManagedEngine
-	if rdb != nil {
-		audioEngine = &ManagedEngine{
-			Synth:  synth.NewSynth(44100),
-			Cutoff: 0.85,
-		}
-		StartAudioWorker(ctx, rdb, audioEngine)
-	}
+	// Audio engine disabled - using MP3 library player
 	syncRedisFromDB()
 
 	r := gin.Default()
@@ -1251,9 +1243,7 @@ func main() {
 	r.POST("/admin/train", tokenRequired(), triggerTrainingHandler)
 
 	r.Static("/gostore", "./static/gostore")
-	if audioEngine != nil {
-		r.GET("/stream/procedural", HandleAudioStream(audioEngine))
-	}
+	// Procedural stream disabled
 	r.GET("/download/:platform", HandleAppDownload)
 	r.Static("/gotunes", "./static/gotunes")
 	r.GET("/api/user/audio-profile", tokenRequired(), userAudioProfileHandler)
@@ -1304,7 +1294,7 @@ func userAudioProfileHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"user_id":            userID,
+		"user_id":             userID,
 		"preferred_valence":   avgValence,
 		"preferred_intensity": avgIntensity,
 	})
@@ -1316,7 +1306,7 @@ func audioRecommendationsHandler(c *gin.Context) {
 	targetIntensity, _ := strconv.ParseFloat(c.DefaultQuery("intensity", "0.5"), 64)
 
 	rows, err := db.Query(`
-		SELECT v.id, v.filename, COALESCE(v.thumbnail, ''), COALESCE(v.description, ''),
+		SELECT v.id, v.filename, COALESCE(v.thumbnail, ''), COALESCE(v.description, ''), COALESCE(v.tags, ''),
 		       af.mp3_path, af.valence, af.intensity,
 		       (ABS(af.valence - $1) + ABS(af.intensity - $2)) AS audio_distance
 		FROM videos v
@@ -1335,14 +1325,15 @@ func audioRecommendationsHandler(c *gin.Context) {
 	videos := make([]gin.H, 0)
 	for rows.Next() {
 		var id int
-		var filename, thumbnail, description, mp3Path string
+		var filename, thumbnail, description, tags, mp3Path string
 		var val, intens, dist float64
-		if err := rows.Scan(&id, &filename, &thumbnail, &description, &mp3Path, &val, &intens, &dist); err == nil {
+		if err := rows.Scan(&id, &filename, &thumbnail, &description, &tags, &mp3Path, &val, &intens, &dist); err == nil {
 			videos = append(videos, gin.H{
 				"id":             id,
 				"filename":       filename,
 				"thumbnail":      formatUploadPath(thumbnail),
 				"description":    description,
+				"tags":           tags,
 				"mp3_path":       mp3Path,
 				"valence":        val,
 				"intensity":      intens,
@@ -1398,4 +1389,34 @@ func ensureVideoAudioFeaturesTable() {
 	} else {
 		log.Println("✅ Ensured video_audio_features table exists in PostgreSQL.")
 	}
+}
+
+func HandleAppDownload(c *gin.Context) {
+	app := c.Param("platform")
+	baseDir := "/backend/static/gostore/binaries"
+	
+	if _, err := os.Stat(baseDir); os.IsNotExist(err) {
+		wd, _ := os.Getwd()
+		baseDir = filepath.Join(wd, "static", "gostore", "binaries")
+	}
+
+	var targetFile string
+	switch app {
+	case "fireapp", "android":
+		targetFile = filepath.Join(baseDir, "fireapp.apk")
+	case "gotunes":
+		targetFile = filepath.Join(baseDir, "gotunes.apk")
+	default:
+		c.JSON(http.StatusNotFound, gin.H{"error": "Application binary not found"})
+		return
+	}
+
+	if _, err := os.Stat(targetFile); os.IsNotExist(err) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Binary missing on server", "path": targetFile})
+		return
+	}
+
+	c.Header("Content-Type", "application/vnd.android.package-archive")
+	c.Header("Content-Disposition", "attachment; filename=" + filepath.Base(targetFile))
+	c.File(targetFile)
 }
