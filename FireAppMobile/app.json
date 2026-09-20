@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "goLand",
+    "slug": "goland-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "icon": "./assets/go.jpg",
+    "splash": {
+      "backgroundColor": "#0b0c10"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/go.jpg",
+        "backgroundColor": "#0b0c10"
+      },
+      "package": "com.fireapp.goland",
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ]
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "31952c5c-4acd-48c2-a086-5eea889a7d5d"
+      }
+    },
+    "owner": "bielzin_022",
+    "updates": {
+      "url": "https://u.expo.dev/31952c5c-4acd-48c2-a086-5eea889a7d5d"
+    }
+  }
+}
