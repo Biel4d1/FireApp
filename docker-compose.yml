@@ -7,6 +7,8 @@ services:
       - "${PORT:-5000}:5000"
     volumes:
       - ${UPLOADS_HOST_DIR:-/mnt/storage/smartvideos/uploads}:/backend/uploads
+      - ./static:/backend/static:ro
+      - /var/www/gostore/binaries:/var/www/gostore/binaries:ro
     environment:
       - REDIS_URL=${REDIS_URL}
       - JWT_SECRET=${JWT_SECRET}
@@ -26,7 +28,7 @@ services:
     command: python worker.py
     volumes:
       - .:/backend:z
-      - ${UPLOADS_HOST_DIR:-/mnt/storage/smartvideos/uploads}:/app/uploads
+      - ${UPLOADS_HOST_DIR:-/mnt/storage/smartvideos/uploads}:/backend/uploads
       - ./.cache/huggingface:/root/.cache/huggingface
       - ./.cache/whisper:/root/.cache/whisper
     environment:

@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Biel4d1/goTunes/synth"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -921,6 +922,7 @@ func recordInteractionHandler(c *gin.Context) {
 }
 
 func serveVideoHandler(c *gin.Context) {
+	rdb.Publish(c.Request.Context(), "fireapp:audio:parameters", `{"valence": 0.8, "arousal": 0.7, "intensity": 0.7}`)
 	filename := c.Param("filename")
 	filePath := filepath.Join("uploads", "videos", filename)
 
@@ -1181,6 +1183,14 @@ func main() {
 	ensureIsPublishedColumn()
 
 	rdb = initRedis()
+	var audioEngine *ManagedEngine
+	if rdb != nil {
+		audioEngine = &ManagedEngine{
+			Synth:  synth.NewSynth(44100),
+			Cutoff: 0.85,
+		}
+		StartAudioWorker(ctx, rdb, audioEngine)
+	}
 	syncRedisFromDB()
 
 	r := gin.Default()
@@ -1219,9 +1229,30 @@ func main() {
 	r.DELETE("/delete_account", tokenRequired(), deleteAccountHandler)
 
 	port := getEnv("PORT", "5000")
-	log.Printf("🔥 Server running on http://0.0.0.0:%s", port)
+	log.Printf("🔥 Server running on http://0.0.0:%s", port)
 	r.GET("/search", tokenRequired(), searchHandler)
 	r.POST("/admin/train", tokenRequired(), triggerTrainingHandler)
+
+	r.Static("/gostore", "./static/gostore")
+	if audioEngine != nil {
+		r.GET("/stream/procedural", HandleAudioStream(audioEngine))
+	}
+	r.GET("/download/:platform", HandleAppDownload)
+	r.Static("/gotunes", "./static/gotunes")
+	r.POST("/api/audio/parameters", func(c *gin.Context) {
+		var p struct {
+			Valence   float64 `json:"valence"`
+			Arousal   float64 `json:"arousal"`
+			Intensity float64 `json:"intensity"`
+		}
+		if err := c.ShouldBindJSON(&p); err != nil {
+			c.JSON(400, gin.H{"error": err.Error()})
+			return
+		}
+		payload := fmt.Sprintf(`{"valence": %.2f, "arousal": %.2f, "intensity": %.2f}`, p.Valence, p.Arousal, p.Intensity)
+		rdb.Publish(c.Request.Context(), "fireapp:audio:parameters", payload)
+		c.JSON(200, gin.H{"status": "ok"})
+	})
 	r.Run(":" + port)
 }
 

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>goStore | Application Hub</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0c; color: #f3f4f6; margin: 0; padding: 40px 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { max-width: 900px; width: 100%; }
+        header { text-align: center; margin-bottom: 50px; }
+        h1 { font-size: 2.5rem; margin-bottom: 10px; background: linear-gradient(45deg, #ff4500, #ff8c00); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .tagline { color: #9ca3af; font-size: 1.1rem; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 25px; margin-top: 20px; }
+        .card { background: #141417; border: 1px solid #27272a; border-radius: 12px; padding: 24px; display: flex; flex-direction: column; justify-content: space-between; transition: transform 0.2s, border-color 0.2s; }
+        .card:hover { transform: translateY(-4px); border-color: #ff4500; }
+        .app-title { font-size: 1.4rem; font-weight: bold; margin: 0 0 8px 0; }
+        .badge { display: inline-block; font-size: 0.75rem; background: #27272a; padding: 4px 8px; border-radius: 6px; color: #ff8c00; font-weight: bold; margin-bottom: 15px; }
+        .desc { color: #a1a1aa; font-size: 0.95rem; line-height: 1.5; margin-bottom: 20px; }
+        .btn { display: block; text-align: center; background: #ff4500; color: #fff; text-decoration: none; padding: 12px; border-radius: 8px; font-weight: 600; transition: background 0.2s; }
+        .btn:hover { background: #e03e00; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>goStore Hub</h1>
+            <p class="tagline">Download compiled platform binaries and preview application packages directly.</p>
+        </header>
+        <div class="grid">
+            <div class="card">
+                <div>
+                    <div class="app-title">FireApp Mobile</div>
+                    <span class="badge">Android APK (Preview)</span>
+                    <p class="desc">Multimodal video streaming client featuring real-time AI context-aware parameter orchestration pipelines.</p>
+                </div>
+                <a href="/download/android" class="btn">Download APK</a>
+            </div>
+            <div class="card">
+                <div>
+                    <div class="app-title">Family Finance Ledger</div>
+                    <span class="badge">Windows Setup</span>
+                    <p class="desc">Local-first desktop financial management system compiled safely through modular backend architecture.</p>
+                </div>
+                <a href="/download/windows" class="btn">Download for Windows</a>
+            </div>
+            <div class="card">
+                <div>
+                    <div class="app-title">Family Finance AppImage</div>
+                    <span class="badge">Linux Binary</span>
+                    <p class="desc">Native standalone executable target compiled explicitly for structural deployment environments.</p>
+                </div>
+                <a href="/download/linux" class="btn">Download AppImage</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -103,3 +103,40 @@ if __name__ == '__main__':
         run_training_pipeline()
     else:
         app.run(host='0.0.0.0', port=5001)
+
+import json
+import redis
+import librosa
+
+# Redis client for audio parameter publishing
+_redis_audio_client = redis.Redis(host='redis', port=6379, db=0)
+
+def extract_and_publish_audio_mood(video_path):
+    """
+    Analyzes raw audio from a video file, computes energy/spectral features,
+    and publishes calculated valence and intensity directly to goTunes.
+    """
+    try:
+        # Load up to 30 seconds of audio from the video track
+        y, sr = librosa.load(video_path, duration=30)
+        
+        # Calculate RMS energy (intensity) and Spectral Centroid (brightness)
+        rms = float(librosa.feature.rms(y=y).mean())
+        spectral_centroid = float(librosa.feature.spectral_centroid(y=y, sr=sr).mean())
+        
+        # Normalize calculated features to bounds [0.1, 1.0]
+        intensity = min(max(rms * 10.0, 0.1), 1.0)
+        valence = min(max(spectral_centroid / 4000.0, 0.1), 1.0)
+        
+        payload = {
+            "valence": valence,
+            "arousal": intensity,
+            "intensity": intensity
+        }
+        
+        # Publish parameter set to the goTunes Redis Pub/Sub channel
+        _redis_audio_client.publish("fireapp:audio:parameters", json.dumps(payload))
+        print(f"[WORKER] Published goTunes parameters: {payload}")
+        
+    except Exception as e:
+        print(f"[WORKER] Failed to process audio mood: {e}")

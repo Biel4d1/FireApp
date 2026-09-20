@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>goTunes | Procedural Synth Studio</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0c; color: #f3f4f6; margin: 0; padding: 40px 20px; display: flex; flex-direction: column; align-items: center; }
+        .container { max-width: 600px; width: 100%; background: #141417; border: 1px solid #27272a; border-radius: 12px; padding: 30px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        h1 { font-size: 2rem; margin-bottom: 5px; background: linear-gradient(45deg, #00d2ff, #3a7bd5); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        p { color: #9ca3af; margin-bottom: 30px; }
+        .control-group { margin-bottom: 25px; }
+        label { display: flex; justify-content: space-between; font-weight: 600; margin-bottom: 8px; }
+        input[type=range] { width: 100%; height: 6px; background: #27272a; border-radius: 3px; outline: none; -webkit-appearance: none; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%; background: #00d2ff; cursor: pointer; }
+        .btn { display: block; width: 100%; padding: 14px; background: linear-gradient(45deg, #00d2ff, #3a7bd5); border: none; border-radius: 8px; color: #fff; font-size: 1rem; font-weight: 700; cursor: pointer; transition: opacity 0.2s; }
+        .btn:hover { opacity: 0.9; }
+        .btn:disabled { background: #27272a; color: #666; cursor: not-allowed; }
+        .status { margin-top: 15px; text-align: center; font-size: 0.85rem; color: #10b981; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>goTunes Studio</h1>
+        <p>Real-time procedural audio synthesis stream control panel.</p>
+
+        <button id="streamBtn" class="btn">Start Audio Stream</button>
+
+        <div style="margin-top: 30px;">
+            <div class="control-group">
+                <label>Valence (Filter Cutoff) <span id="vVal">0.50</span></label>
+                <input type="range" id="valence" min="0.1" max="1.0" step="0.05" value="0.50">
+            </div>
+            <div class="control-group">
+                <label>Arousal (Harmonics) <span id="aVal">0.50</span></label>
+                <input type="range" id="arousal" min="0.1" max="1.0" step="0.05" value="0.50">
+            </div>
+            <div class="control-group">
+                <label>Intensity (Volume/Gain) <span id="iVal">0.50</span></label>
+                <input type="range" id="intensity" min="0.1" max="1.0" step="0.05" value="0.50">
+            </div>
+        </div>
+
+        <div id="status" class="status">Stream Inactive</div>
+    </div>
+
+    <script>
+        let audioCtx, isPlaying = false;
+
+        document.getElementById('streamBtn').addEventListener('click', async () => {
+            if (isPlaying) return;
+            
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
+            document.getElementById('status').innerText = 'Connecting to procedural stream...';
+
+            try {
+                const response = await fetch('/stream/procedural');
+                const reader = response.body.getReader();
+                isPlaying = true;
+                document.getElementById('streamBtn').disabled = true;
+                document.getElementById('status').innerText = 'Streaming Live Audio';
+
+                let buffer = new Uint8Array(0);
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    let newBuffer = new Uint8Array(buffer.length + value.length);
+                    newBuffer.set(buffer);
+                    newBuffer.set(value, buffer.length);
+                    buffer = newBuffer;
+
+                    while (buffer.length >= 8820) { 
+                        let pcmChunk = buffer.slice(0, 8820);
+                        buffer = buffer.slice(8820);
+
+                        let audioBuffer = audioCtx.createBuffer(1, 44100 * 0.1, 44100);
+                        let channelData = audioBuffer.getChannelData(0);
+                        let dataView = new DataView(pcmChunk.buffer, pcmChunk.byteOffset, pcmChunk.byteLength);
+
+                        for (let i = 0; i < 44100 * 0.1; i++) {
+                            let int16 = dataView.getInt16(i * 2, true);
+                            channelData[i] = int16 / 32768.0;
+                        }
+
+                        let source = audioCtx.createBufferSource();
+                        source.buffer = audioBuffer;
+                        source.connect(audioCtx.destination);
+                        source.start();
+                    }
+                }
+            } catch (err) {
+                document.getElementById('status').innerText = 'Stream error: ' + err.message;
+            }
+        });
+
+        async function updateParams() {
+            const valence = parseFloat(document.getElementById('valence').value);
+            const arousal = parseFloat(document.getElementById('arousal').value);
+            const intensity = parseFloat(document.getElementById('intensity').value);
+
+            document.getElementById('vVal').innerText = valence.toFixed(2);
+            document.getElementById('aVal').innerText = arousal.toFixed(2);
+            document.getElementById('iVal').innerText = intensity.toFixed(2);
+
+            await fetch('/api/audio/parameters', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ valence, arousal, intensity })
+            });
+        }
+
+        ['valence', 'arousal', 'intensity'].forEach(id => {
+            document.getElementById(id).addEventListener('input', updateParams);
+        });
+    </script>
+</body>
+</html>
