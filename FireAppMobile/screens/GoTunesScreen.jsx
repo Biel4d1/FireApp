@@ -19,8 +19,27 @@ export default function GoTunesScreen({ token, setToken }) {
   const activeVideoIdRef = useRef(null);
 
   useEffect(() => {
+    // Configure Expo Audio Session for background streaming
+    const setupAudioSession = async () => {
+      try {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          staysActiveInBackground: true, // Key property for background play
+          playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        });
+      } catch (e) {
+        console.warn('Failed to configure audio session:', e);
+      }
+    };
+
+    setupAudioSession();
     fetchRecommendations(0.5, 0.5);
-    return () => { if (sound) sound.unloadAsync(); };
+
+    return () => {
+      if (sound) sound.unloadAsync();
+    };
   }, []);
 
   const handleAuth = async () => {
@@ -41,7 +60,6 @@ export default function GoTunesScreen({ token, setToken }) {
       if (res.ok) {
         if (isSignup) {
           Alert.alert('Success', 'Account created! Logging you in...');
-          // Auto-login after signup
           setIsSignup(false);
           handleLoginDirect(username, password);
         } else if (data.token) {

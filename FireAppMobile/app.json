@@ -10,7 +10,12 @@
       "backgroundColor": "#0b0c10"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "audio"
+        ]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -22,7 +27,10 @@
         "INTERNET",
         "ACCESS_NETWORK_STATE",
         "INTERNET",
-        "ACCESS_NETWORK_STATE"
+        "ACCESS_NETWORK_STATE",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "WAKE_LOCK"
       ]
     },
     "runtimeVersion": {
@@ -36,6 +44,14 @@
     "owner": "bielzin_022",
     "updates": {
       "url": "https://u.expo.dev/31952c5c-4acd-48c2-a086-5eea889a7d5d"
-    }
+    },
+    "plugins": [
+      [
+        "expo-av",
+        {
+          "microphonePermission": false
+        }
+      ]
+    ]
   }
 }
