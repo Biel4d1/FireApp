@@ -140,3 +140,44 @@ def extract_and_publish_audio_mood(video_path):
         
     except Exception as e:
         print(f"[WORKER] Failed to process audio mood: {e}")
+
+import subprocess
+import psycopg2
+
+AUDIO_LIB_DIR = "uploads/audio_library"
+os.makedirs(AUDIO_LIB_DIR, exist_ok=True)
+
+def process_video_audio(video_id, video_path):
+    """Extracts .mp3 from uploaded video, computes features via Librosa, and saves to PostgreSQL."""
+    try:
+        mp3_name = f"audio_{video_id}.mp3"
+        mp3_path = os.path.join(AUDIO_LIB_DIR, mp3_name)
+        
+        # 1. Convert video track to MP3 via FFmpeg
+        cmd = ["ffmpeg", "-y", "-i", video_path, "-vn", "-acodec", "libmp3lame", "-q:a", "2", mp3_path]
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # 2. Extract features with Librosa
+        y, sr = librosa.load(mp3_path, sr=22050, duration=30)
+        rms = float(librosa.feature.rms(y=y).mean())
+        spectral_centroid = float(librosa.feature.spectral_centroid(y=y, sr=sr).mean())
+        
+        intensity = min(max(rms * 10.0, 0.1), 1.0)
+        valence = min(max(spectral_centroid / 4000.0, 0.1), 1.0)
+        
+        # 3. Store in PostgreSQL
+        db_url = os.environ.get("DATABASE_URL")
+        conn = psycopg2.connect(db_url)
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO video_audio_features (video_id, mp3_path, bpm, valence, intensity)
+            VALUES (%s, %s, %s, %s, %s)
+            ON CONFLICT (video_id) DO UPDATE 
+            SET mp3_path = EXCLUDED.mp3_path, valence = EXCLUDED.valence, intensity = EXCLUDED.intensity;
+        """, (video_id, f"uploads/audio_library/{mp3_name}", 120.0, valence, intensity))
+        conn.commit()
+        cur.close()
+        conn.close()
+        print(f"✅ [AUDIO-WORKER] Successfully processed MP3 for video #{video_id}")
+    except Exception as e:
+        print(f"❌ [AUDIO-WORKER] Error extracting audio: {e}")

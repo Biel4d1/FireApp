@@ -1,18 +1,22 @@
 # Stage 1: Build Go binaries
 FROM golang:alpine AS builder
 
+# Install git for module resolutions
+RUN apk add --no-cache git
+
 WORKDIR /app
 
 ENV GOTOOLCHAIN=auto
 
+# Copy dependency configs and local code
 COPY go.mod go.sum ./
-RUN go mod download
-
 COPY . .
+
+RUN go mod download
 RUN go mod tidy
 
-# Explicitly pass target source files to avoid main() redeclaration conflicts
-RUN CGO_ENABLED=0 GOOS=linux go build -o server main.go init_db.go
+# Build web server and db-sync binaries
+RUN CGO_ENABLED=0 GOOS=linux go build -o server main.go stream.go init_db.go
 RUN CGO_ENABLED=0 GOOS=linux go build -o sync_db sync_db.go
 
 # Stage 2: Create runtime container

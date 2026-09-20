@@ -38,3 +38,8 @@ def background_run_tagger(filename, video_id):
         print(f"🏷️ Assigned tags to video #{video_id}: {tags}")
     except Exception as e:
         print(f"❌ Error running tagger for video #{video_id}: {e}")
+
+def background_extract_and_process_audio(video_path, video_id):
+    """Background task to extract MP3 and audio features."""
+    from worker import process_video_audio
+    process_video_audio(video_id, video_path)

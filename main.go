@@ -448,6 +448,13 @@ user_vector AS (
     FROM interactions i
     JOIN videos v_emb ON i.video_id = v_emb.id
     WHERE i.user_id = $1 AND v_emb.embedding IS NOT NULL AND (i.watch_time_ms >= 3000 OR EXISTS(SELECT 1 FROM likes l WHERE l.user_id = $2 AND l.video_id = v_emb.id))
+),
+user_audio_profile AS (
+    SELECT COALESCE(AVG(af.valence), 0.5) AS pref_valence,
+           COALESCE(AVG(af.intensity), 0.5) AS pref_intensity
+    FROM interactions i
+    JOIN video_audio_features af ON i.video_id = af.video_id
+    WHERE i.user_id = $1 AND i.watch_time_ms >= 2000
 )
 SELECT 
   v.id, 
@@ -462,15 +469,23 @@ SELECT
   COALESCE(COUNT(DISTINCT c.id), 0) as comments_count,
   CASE WHEN EXISTS(SELECT 1 FROM likes lk WHERE lk.user_id = $3 AND lk.video_id = v.id) THEN 1 ELSE 0 END AS liked_score,
   CASE WHEN EXISTS(SELECT 1 FROM dislikes dk WHERE dk.user_id = $4 AND dk.video_id = v.id) THEN 1 ELSE 0 END AS disliked_score,
-  ((0.35 * (
+  (
+    (0.25 * (
       CASE 
         WHEN (SELECT avg_embed FROM user_vector) IS NOT NULL AND v.embedding IS NOT NULL 
         THEN (1.0 - LEAST(1.0, GREATEST(0.0, (v.embedding <-> (SELECT avg_embed FROM user_vector)))))
         ELSE 0.5 
       END
-   ))
-   + (0.20 * (CASE WHEN COALESCE(max_watch.max_w,0) > 0 THEN CAST(COALESCE(user_watch.uw,0) AS FLOAT) / max_watch.max_w ELSE 0 END))
-   + (0.15 * (
+    ))
+    + (0.20 * (
+      CASE 
+        WHEN af_v.valence IS NOT NULL THEN
+          (1.0 - LEAST(1.0, ABS(af_v.valence - (SELECT pref_valence FROM user_audio_profile)) + ABS(af_v.intensity - (SELECT pref_intensity FROM user_audio_profile))))
+        ELSE 0.5 
+      END
+    ))
+    + (0.20 * (CASE WHEN COALESCE(max_watch.max_w,0) > 0 THEN CAST(COALESCE(user_watch.uw,0) AS FLOAT) / max_watch.max_w ELSE 0 END))
+    + (0.15 * (
       CASE 
         WHEN v.tags IS NOT NULL AND v.tags != '' AND (SELECT preferred_tags FROM user_liked_tags) IS NOT NULL THEN
           LEAST(1.0, cardinality(
@@ -482,19 +497,20 @@ SELECT
           ) * 0.25)
         ELSE 0 
       END
-     ))
-   + (0.15 * (CASE WHEN EXISTS(SELECT 1 FROM comments c3 JOIN videos vv ON c3.video_id = vv.id WHERE c3.user_id = $5 AND vv.uploader_id = v.uploader_id) THEN 1 ELSE 0 END))
-   + (0.15 * (CASE WHEN EXISTS(SELECT 1 FROM likes lk WHERE lk.user_id = $6 AND lk.video_id = v.id) THEN 1 ELSE 0 END))
-   - (0.30 * (CASE WHEN EXISTS(SELECT 1 FROM dislikes dk2 WHERE dk2.user_id = $7 AND dk2.video_id = v.id) THEN 1 ELSE 0 END))
+    ))
+    + (0.10 * (CASE WHEN EXISTS(SELECT 1 FROM interactions i_up JOIN videos v_up ON i_up.video_id = v_up.id WHERE i_up.user_id = $5 AND v_up.uploader_id = v.uploader_id) THEN 1 ELSE 0 END))
+    + (0.10 * (CASE WHEN EXISTS(SELECT 1 FROM likes lk WHERE lk.user_id = $6 AND lk.video_id = v.id) THEN 1 ELSE 0 END))
+    - (0.30 * (CASE WHEN EXISTS(SELECT 1 FROM dislikes dk2 WHERE dk2.user_id = $7 AND dk2.video_id = v.id) THEN 1 ELSE 0 END))
   ) AS weighted_score,
   (COALESCE(v.likes_count, 0) + COALESCE(COUNT(DISTINCT c.id), 0)) AS global_popularity
 FROM videos v
 LEFT JOIN users u ON v.uploader_id = u.id
+LEFT JOIN video_audio_features af_v ON v.id = af_v.video_id
 LEFT JOIN comments c ON v.id = c.video_id
 LEFT JOIN (SELECT video_id, MAX(watch_time_ms) AS max_w FROM interactions GROUP BY video_id) AS max_watch ON max_watch.video_id = v.id
 LEFT JOIN (SELECT video_id, watch_time_ms AS uw FROM interactions WHERE user_id = $8) AS user_watch ON user_watch.video_id = v.id
 WHERE (v.is_published IS TRUE OR v.is_published IS NULL)%s
-GROUP BY v.id, u.username, u.profile_pic_url, max_watch.max_w, user_watch.uw
+GROUP BY v.id, u.username, u.profile_pic_url, max_watch.max_w, user_watch.uw, af_v.valence, af_v.intensity
 ORDER BY weighted_score DESC, global_popularity DESC, v.id DESC`, exclusionClause)
 
 	params := []interface{}{userParam, userParam, userParam, userParam, userParam, userParam, userParam, userParam}
@@ -833,6 +849,7 @@ func uploadHandler(c *gin.Context) {
 
 	enqueueRQTask("backend.background_extract_and_save_thumbnail", savePath, videoID)
 	enqueueRQTask("backend.background_run_tagger", uniqueName, videoID)
+	enqueueRQTask("backend.background_extract_and_process_audio", savePath, videoID)
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message":  "upload successful",
@@ -1239,6 +1256,9 @@ func main() {
 	}
 	r.GET("/download/:platform", HandleAppDownload)
 	r.Static("/gotunes", "./static/gotunes")
+	r.GET("/api/user/audio-profile", tokenRequired(), userAudioProfileHandler)
+	r.GET("/api/recommendations/by-audio", audioRecommendationsHandler)
+	r.POST("/api/gotunes/record-listen", tokenRequired(), recordAudioListenHandler)
 	r.POST("/api/audio/parameters", func(c *gin.Context) {
 		var p struct {
 			Valence   float64 `json:"valence"`
@@ -1259,4 +1279,123 @@ func main() {
 func triggerTrainingHandler(c *gin.Context) {
 	enqueueRQTask("backend.background_run_trainer")
 	c.JSON(http.StatusOK, gin.H{"message": "In-app AI training enqueued asynchronously"})
+}
+
+// GET /api/user/audio-profile - Syncs logged-in user's watch history valence with goTunes
+func userAudioProfileHandler(c *gin.Context) {
+	userID := c.GetInt("current_user_id")
+
+	var avgValence, avgIntensity float64
+	err := db.QueryRow(`
+		SELECT COALESCE(AVG(af.valence), 0.5), COALESCE(AVG(af.intensity), 0.5)
+		FROM interactions i
+		JOIN video_audio_features af ON i.video_id = af.video_id
+		WHERE i.user_id = $1 AND i.watch_time_ms >= 3000
+	`, userID).Scan(&avgValence, &avgIntensity)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to calculate audio profile"})
+		return
+	}
+
+	payload := fmt.Sprintf(`{"user_id": %d, "valence": %.2f, "intensity": %.2f}`, userID, avgValence, avgIntensity)
+	if rdb != nil {
+		rdb.Publish(c.Request.Context(), "fireapp:audio:parameters", payload)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"user_id":            userID,
+		"preferred_valence":   avgValence,
+		"preferred_intensity": avgIntensity,
+	})
+}
+
+// GET /api/recommendations/by-audio - Recommends videos whose MP3 features match target valence/intensity
+func audioRecommendationsHandler(c *gin.Context) {
+	targetValence, _ := strconv.ParseFloat(c.DefaultQuery("valence", "0.5"), 64)
+	targetIntensity, _ := strconv.ParseFloat(c.DefaultQuery("intensity", "0.5"), 64)
+
+	rows, err := db.Query(`
+		SELECT v.id, v.filename, COALESCE(v.thumbnail, ''), COALESCE(v.description, ''),
+		       af.mp3_path, af.valence, af.intensity,
+		       (ABS(af.valence - $1) + ABS(af.intensity - $2)) AS audio_distance
+		FROM videos v
+		JOIN video_audio_features af ON v.id = af.video_id
+		WHERE (v.is_published IS TRUE OR v.is_published IS NULL)
+		ORDER BY audio_distance ASC
+		LIMIT 10
+	`, targetValence, targetIntensity)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Query failed"})
+		return
+	}
+	defer rows.Close()
+
+	videos := make([]gin.H, 0)
+	for rows.Next() {
+		var id int
+		var filename, thumbnail, description, mp3Path string
+		var val, intens, dist float64
+		if err := rows.Scan(&id, &filename, &thumbnail, &description, &mp3Path, &val, &intens, &dist); err == nil {
+			videos = append(videos, gin.H{
+				"id":             id,
+				"filename":       filename,
+				"thumbnail":      formatUploadPath(thumbnail),
+				"description":    description,
+				"mp3_path":       mp3Path,
+				"valence":        val,
+				"intensity":      intens,
+				"audio_distance": dist,
+			})
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"recommended_videos": videos})
+}
+
+// Fixed user profile handler with safe fallback for new users
+
+// POST /api/gotunes/record-listen - Logs goTunes audio listening events
+func recordAudioListenHandler(c *gin.Context) {
+	userID := c.GetInt("current_user_id")
+	var req struct {
+		VideoID  int `json:"video_id"`
+		ListenMs int `json:"listen_ms"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || req.VideoID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "video_id required"})
+		return
+	}
+
+	query := `
+		INSERT INTO interactions (user_id, video_id, watch_time_ms)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (user_id, video_id) 
+		DO UPDATE SET watch_time_ms = interactions.watch_time_ms + EXCLUDED.watch_time_ms
+	`
+	_, err := db.Exec(query, userID, req.VideoID, int(float64(req.ListenMs)*1.2))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to log audio listen"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "audio_interaction_recorded"})
+}
+
+func ensureVideoAudioFeaturesTable() {
+	query := `
+	CREATE TABLE IF NOT EXISTS video_audio_features (
+		video_id INT PRIMARY KEY REFERENCES videos(id) ON DELETE CASCADE,
+		mp3_path TEXT NOT NULL,
+		bpm FLOAT NOT NULL,
+		valence FLOAT NOT NULL,
+		intensity FLOAT NOT NULL,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	);`
+	if _, err := db.Exec(query); err != nil {
+		log.Printf("[WARNING] Failed to ensure video_audio_features table: %v", err)
+	} else {
+		log.Println("✅ Ensured video_audio_features table exists in PostgreSQL.")
+	}
 }

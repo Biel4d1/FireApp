@@ -95,3 +95,10 @@ ingest.py
 uploads/
 .env
 custom_clip_weights/
+/var/www/gostore/binaries/
+*.apk
+*.exe
+*.AppImage
+.cache/
+postgres_data/
+redis_data/
