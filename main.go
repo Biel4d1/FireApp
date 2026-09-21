@@ -407,13 +407,45 @@ func deleteAccountHandler(c *gin.Context) {
 		return
 	}
 
+	var profilePicUrl sql.NullString
+	db.QueryRow("SELECT profile_pic_url FROM users WHERE id = $1", userID).Scan(&profilePicUrl)
+	if profilePicUrl.Valid && profilePicUrl.String != "" {
+		os.Remove(formatUploadPath(profilePicUrl.String))
+	}
+
+	rows, err := db.Query(`
+		SELECT v.id, v.filename, COALESCE(v.thumbnail, ), COALESCE(af.mp3_path, )
+		FROM videos v
+		LEFT JOIN video_audio_features af ON v.id = af.video_id
+		WHERE v.uploader_id = $1
+	`, userID)
+
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var vid int
+			var filename, thumbnail, mp3Path string
+			if err := rows.Scan(&vid, &filename, &thumbnail, &mp3Path); err == nil {
+				if filename != "" {
+					os.Remove(filepath.Join("uploads", "videos", filename))
+				}
+				if thumbnail != "" {
+					os.Remove(formatUploadPath(thumbnail))
+				}
+				if mp3Path != "" {
+					os.Remove(formatUploadPath(mp3Path))
+				}
+			}
+		}
+	}
+
 	_, err = db.Exec("DELETE FROM users WHERE id = $1", userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("db error: %v", err)})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "account deleted"})
+	c.JSON(http.StatusOK, gin.H{"message": "account and all associated files deleted successfully"})
 }
 
 func personalizedFeedHandler(c *gin.Context) {
