@@ -143,12 +143,27 @@ def extract_and_publish_audio_mood(video_path):
 
 import subprocess
 import psycopg2
+import asyncio
+from shazamio import Shazam
 
 AUDIO_LIB_DIR = "uploads/audio_library"
 os.makedirs(AUDIO_LIB_DIR, exist_ok=True)
 
+async def recognize_song(mp3_path):
+    try:
+        shazam = Shazam()
+        out = await shazam.recognize(mp3_path)
+        track = out.get("track", {})
+        title = track.get("title", "")
+        artist = track.get("subtitle", "")
+        genre = track.get("genres", {}).get("primary", "")
+        return title, artist, genre
+    except Exception as e:
+        print(f"⚠️ [SHAZAM] Could not recognize song: {e}")
+        return "", "", ""
+
 def process_video_audio(video_id, video_path):
-    """Extracts .mp3 from uploaded video, computes features via Librosa, and saves to PostgreSQL."""
+    """Extracts .mp3, recognizes song title via Shazam, computes features, and updates PostgreSQL."""
     try:
         mp3_name = f"audio_{video_id}.mp3"
         mp3_path = os.path.join(AUDIO_LIB_DIR, mp3_name)
@@ -157,7 +172,12 @@ def process_video_audio(video_id, video_path):
         cmd = ["ffmpeg", "-y", "-i", video_path, "-vn", "-acodec", "libmp3lame", "-q:a", "2", mp3_path]
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
-        # 2. Extract features with Librosa
+        # 2. Recognize Song via Shazam
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        song_title, song_artist, genre = loop.run_until_complete(recognize_song(mp3_path))
+        
+        # 3. Extract features with Librosa
         y, sr = librosa.load(mp3_path, sr=22050, duration=30)
         rms = float(librosa.feature.rms(y=y).mean())
         spectral_centroid = float(librosa.feature.spectral_centroid(y=y, sr=sr).mean())
@@ -165,16 +185,34 @@ def process_video_audio(video_id, video_path):
         intensity = min(max(rms * 10.0, 0.1), 1.0)
         valence = min(max(spectral_centroid / 4000.0, 0.1), 1.0)
         
-        # 3. Store in PostgreSQL
+        # 4. Store in PostgreSQL
         db_url = os.environ.get("DATABASE_URL")
         conn = psycopg2.connect(db_url)
         cur = conn.cursor()
+        
+        # Update audio features
         cur.execute("""
             INSERT INTO video_audio_features (video_id, mp3_path, bpm, valence, intensity)
             VALUES (%s, %s, %s, %s, %s)
             ON CONFLICT (video_id) DO UPDATE 
             SET mp3_path = EXCLUDED.mp3_path, valence = EXCLUDED.valence, intensity = EXCLUDED.intensity;
         """, (video_id, f"uploads/audio_library/{mp3_name}", 120.0, valence, intensity))
+
+        # Update video metadata with recognized song title and artist + append to tags
+        if song_title:
+            new_tags = f"{song_title},{song_artist},{genre}".strip(",")
+            cur.execute("""
+                UPDATE videos 
+                SET song_title = %s, 
+                    song_artist = %s,
+                    tags = CASE 
+                        WHEN tags IS NULL OR tags = '' THEN %s 
+                        ELSE tags || ',' || %s 
+                    END
+                WHERE id = %s;
+            """, (song_title, song_artist, new_tags, new_tags, video_id))
+            print(f"🎵 [SHAZAM] Recognized: '{song_title}' by {song_artist} for video #{video_id}")
+
         conn.commit()
         cur.close()
         conn.close()

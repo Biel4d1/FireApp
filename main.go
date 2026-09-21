@@ -1137,7 +1137,7 @@ func searchHandler(c *gin.Context) {
 			FROM videos v
 			LEFT JOIN users u ON v.uploader_id = u.id
 			WHERE (v.is_published IS TRUE OR v.is_published IS NULL)
-			ORDER BY (v.embedding <-> $1::vector) - (CASE WHEN v.tags ILIKE $2 OR v.description ILIKE $2 OR u.username ILIKE $2 THEN 0.3 ELSE 0.0 END) ASC
+			ORDER BY (v.embedding <-> $1::vector) - (CASE WHEN v.tags ILIKE $2 OR v.description ILIKE $2 OR u.username ILIKE $2 OR v.song_title ILIKE $2 OR v.song_artist ILIKE $2 THEN 0.3 ELSE 0.0 END) ASC
 			LIMIT 30
 		`, vecStr, searchPattern)
 	} else {
@@ -1147,9 +1147,9 @@ func searchHandler(c *gin.Context) {
 			       COALESCE(v.tags, ''), COALESCE(v.likes_count, 0)
 			FROM videos v
 			LEFT JOIN users u ON v.uploader_id = u.id
-			WHERE (v.tags ILIKE $1 OR v.description ILIKE $1 OR u.username ILIKE $1) AND (v.is_published IS TRUE OR v.is_published IS NULL)
+			WHERE (v.tags ILIKE $1 OR v.description ILIKE $1 OR u.username ILIKE $1 OR v.song_title ILIKE $1 OR v.song_artist ILIKE $1) AND (v.is_published IS TRUE OR v.is_published IS NULL)
 			ORDER BY 
-    (CASE WHEN v.tags ILIKE $1 THEN 0 WHEN v.description ILIKE $1 THEN 1 ELSE 2 END) ASC, 
+    (CASE WHEN v.song_title ILIKE $1 THEN 0 WHEN v.tags ILIKE $1 THEN 1 WHEN v.description ILIKE $1 THEN 2 ELSE 3 END) ASC, 
     v.id DESC 
 LIMIT 30
 		`, searchPattern)
@@ -1308,9 +1308,13 @@ func audioRecommendationsHandler(c *gin.Context) {
 	rows, err := db.Query(`
 		SELECT v.id, v.filename, COALESCE(v.thumbnail, ''), COALESCE(v.description, ''), COALESCE(v.tags, ''),
 		       af.mp3_path, af.valence, af.intensity,
-		       (ABS(af.valence - $1) + ABS(af.intensity - $2)) AS audio_distance
+		       (ABS(af.valence - $1) + ABS(af.intensity - $2)) AS audio_distance,
+		       COALESCE(u.username, 'Unknown') AS username,
+		       COALESCE(v.song_title, '') AS song_title,
+		       COALESCE(v.song_artist, '') AS song_artist
 		FROM videos v
-		JOIN video_audio_features af ON v.id = af.video_id
+		LEFT JOIN video_audio_features af ON v.id = af.video_id
+		LEFT JOIN users u ON v.uploader_id = u.id
 		WHERE (v.is_published IS TRUE OR v.is_published IS NULL)
 		ORDER BY audio_distance ASC
 		LIMIT 10
@@ -1325,9 +1329,10 @@ func audioRecommendationsHandler(c *gin.Context) {
 	videos := make([]gin.H, 0)
 	for rows.Next() {
 		var id int
-		var filename, thumbnail, description, tags, mp3Path string
+		var filename, thumbnail, description, tags, mp3Path, username string
 		var val, intens, dist float64
-		if err := rows.Scan(&id, &filename, &thumbnail, &description, &tags, &mp3Path, &val, &intens, &dist); err == nil {
+		var songTitle, songArtist string
+		if err := rows.Scan(&id, &filename, &thumbnail, &description, &tags, &mp3Path, &val, &intens, &dist, &username, &songTitle, &songArtist); err == nil {
 			videos = append(videos, gin.H{
 				"id":             id,
 				"filename":       filename,
@@ -1338,6 +1343,9 @@ func audioRecommendationsHandler(c *gin.Context) {
 				"valence":        val,
 				"intensity":      intens,
 				"audio_distance": dist,
+				"username":       username,
+				"song_title":     songTitle,
+				"song_artist":    songArtist,
 			})
 		}
 	}

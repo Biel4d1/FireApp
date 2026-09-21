@@ -17,8 +17,9 @@ COPY requirements.txt .
 # Install CPU-only PyTorch binaries first (~180MB instead of >500MB CUDA wheel)
 RUN pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 
-# Install remaining Python dependencies
+# Install requirements.txt and shazamio from standard PyPI
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir shazamio
 
 COPY . .
 

@@ -37,7 +37,16 @@ export default function GoTunesScreen({ token, setToken }) {
     setupAudioSession();
     fetchRecommendations(0.5, 0.5);
 
-    return () => {
+    const getTrackTitle = (track) => {
+  if (!track) return "";
+  if (track.song_title && track.song_title.trim() !== "") {
+    return track.song_artist ? `${track.song_title} - ${track.song_artist}` : track.song_title;
+  }
+  const uploader = track.username && track.username !== "Unknown" ? track.username : (track.uploader_name || "User");
+  return `Original Sound - ${uploader}`;
+};
+
+  return () => {
       if (sound) sound.unloadAsync();
     };
   }, []);
@@ -152,12 +161,30 @@ export default function GoTunesScreen({ token, setToken }) {
 
   const filteredTracks = tracks.filter(t => {
     const q = searchQuery.toLowerCase();
-    return (
+    const getTrackTitle = (track) => {
+  if (!track) return "";
+  if (track.song_title && track.song_title.trim() !== "") {
+    return track.song_artist ? `${track.song_title} - ${track.song_artist}` : track.song_title;
+  }
+  const uploader = track.username && track.username !== "Unknown" ? track.username : (track.uploader_name || "User");
+  return `Original Sound - ${uploader}`;
+};
+
+  return (
       (t.description && t.description.toLowerCase().includes(q)) ||
       (t.filename && t.filename.toLowerCase().includes(q)) ||
       (t.tags && t.tags.toLowerCase().includes(q))
     );
   });
+
+  const getTrackTitle = (track) => {
+  if (!track) return "";
+  if (track.song_title && track.song_title.trim() !== "") {
+    return track.song_artist ? `${track.song_title} - ${track.song_artist}` : track.song_title;
+  }
+  const uploader = track.username && track.username !== "Unknown" ? track.username : (track.uploader_name || "User");
+  return `Original Sound - ${uploader}`;
+};
 
   return (
     <SafeAreaView style={styles.container}>
@@ -199,10 +226,19 @@ export default function GoTunesScreen({ token, setToken }) {
       contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120 }}
       renderItem={({ item }) => {
         const isActive = activeTrack?.id === item.id;
-        return (
+        const getTrackTitle = (track) => {
+  if (!track) return "";
+  if (track.song_title && track.song_title.trim() !== "") {
+    return track.song_artist ? `${track.song_title} - ${track.song_artist}` : track.song_title;
+  }
+  const uploader = track.username && track.username !== "Unknown" ? track.username : (track.uploader_name || "User");
+  return `Original Sound - ${uploader}`;
+};
+
+  return (
           <TouchableOpacity style={[styles.card, isActive && styles.cardActive]} onPress={() => playTrack(item)}>
           <View style={{ flex: 1 }}>
-          <Text style={styles.cardTitle}>{item.description || item.filename}</Text>
+          <Text style={styles.cardTitle}>{getTrackTitle(item)}</Text>
           <Text style={styles.cardMeta}>Valence: {item.valence.toFixed(2)} | Energy: {item.intensity.toFixed(2)}</Text>
           {item.tags ? <Text style={styles.cardTags}>🏷 {item.tags}</Text> : null}
           </View>
@@ -216,7 +252,7 @@ export default function GoTunesScreen({ token, setToken }) {
     {activeTrack && (
       <View style={styles.playerBar}>
       <View style={{ flex: 1 }}>
-      <Text style={styles.playerTitle} numberOfLines={1}>{activeTrack.description || activeTrack.filename}</Text>
+      <Text style={styles.playerTitle} numberOfLines={1}>{getTrackTitle(activeTrack)}</Text>
       <Text style={styles.playerSub}>Track #{activeTrack.id}</Text>
       </View>
       <TouchableOpacity style={styles.controlBtn} onPress={togglePlayPause}>
