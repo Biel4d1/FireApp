@@ -194,26 +194,6 @@ export default function VideoPlayer({ id, source, posterSource, style, shouldPla
     }
   }, [id]);
 
-  // When shouldPlay changes or source changes, update player state
-  useEffect(() => {
-    if (!internalRef.current) return;
-    
-    const updatePlayState = async () => {
-      try {
-        if (shouldPlay && !userPaused) {
-          // Should be playing - ensure player starts
-          if (typeof internalRef.current.playAsync === 'function') {
-            await internalRef.current.playAsync().catch(() => {});
-          }
-        }
-      } catch (e) {}
-    };
-
-    // Small delay to ensure video is loaded
-    const timer = setTimeout(updatePlayState, 100);
-    return () => clearTimeout(timer);
-  }, [shouldPlay, userPaused, source]);
-
   // When isMuted changes, ensure we don't show pause overlay if we're supposed to be playing
   useEffect(() => {
     if (shouldPlay && userPaused) {
@@ -221,38 +201,15 @@ export default function VideoPlayer({ id, source, posterSource, style, shouldPla
     }
   }, [isMuted]);
 
-  // When shouldPlay becomes true (video scrolled back into view), reset to beginning and start playing
-  useEffect(() => {
-    if (shouldPlay && internalRef.current) {
-      (async () => {
-        try {
-          // Reset pause state
-          setUserPaused(false);
-          
-          // Seek to beginning
-          if (typeof internalRef.current.setPositionAsync === 'function') {
-            await internalRef.current.setPositionAsync(0).catch(() => {});
-          }
-          
-          // Start playback
-          if (typeof internalRef.current.playAsync === 'function') {
-            await internalRef.current.playAsync().catch(() => {});
-          }
-        } catch (e) {}
-      })();
-    }
-  }, [shouldPlay]);
-
   return (
     <Pressable style={[styles.container, style]} onPress={handlePress} onLongPress={onLongPress ?? undefined}>
-      <Video
+      {source && <Video
         ref={internalRef}
         style={StyleSheet.absoluteFill}
         resizeMode={ResizeMode.CONTAIN}
         isLooping
         shouldPlay={shouldPlay && !userPaused}
         isMuted={isMuted}
-        posterSource={posterSource}
         progressUpdateIntervalMillis={progressUpdateIntervalMillis}
         source={source}
         onPlaybackStatusUpdate={s => {
@@ -295,7 +252,7 @@ export default function VideoPlayer({ id, source, posterSource, style, shouldPla
           try { if (onPlaybackStatusUpdate) if (s && s.isLoaded) { onProgressUpdate?.(s.positionMillis || 0, s.durationMillis || 1); }
           try { if (onPlaybackStatusUpdate) onPlaybackStatusUpdate(s); } catch (e) {} } catch (e) {}
         }}
-        onLoad={() => { 
+        onLoad={() => {
           try { 
             if (shouldPlay && !userPaused && internalRef.current) {
               if (typeof internalRef.current.playAsync === 'function') {
@@ -305,7 +262,7 @@ export default function VideoPlayer({ id, source, posterSource, style, shouldPla
             if (onReady) onReady(); 
           } catch (e) {} 
         }}
-      />
+      />}
     </Pressable>
   );
 }

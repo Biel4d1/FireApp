@@ -2,6 +2,7 @@ import React, { useState, useContext } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, ScrollView, Platform, KeyboardAvoidingView, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
 
 import apiClient, { getToken, decodeTokenUserId } from './lib/api';
@@ -154,6 +155,7 @@ export default function UploadScreen() {
       const res = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Videos,
         quality: 1,
+        videoMaxDuration: 60,
       });
 
       if (!res.canceled && res.assets && res.assets.length > 0) {
@@ -174,6 +176,11 @@ export default function UploadScreen() {
         if (!userId) return reject(new Error('Could not extract user_id'));
 
         let uri = asset.uri;
+        const fileInfo = await FileSystem.getInfoAsync(uri);
+        const maxUploadBytes = 200 * 1024 * 1024;
+        if (fileInfo.exists && fileInfo.size && fileInfo.size > maxUploadBytes) {
+          throw new Error('Video is larger than 200 MB');
+        }
         const rawName = asset.name || asset.fileName || `video_${Date.now()}.mp4`;
         const filename = rawName.split('/').pop() || `video_${Date.now()}.mp4`;
         const type = asset.mimeType || asset.type || (filename.endsWith('.mov') ? 'video/quicktime' : 'video/mp4');

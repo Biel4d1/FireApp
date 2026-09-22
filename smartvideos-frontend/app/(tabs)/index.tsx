@@ -204,7 +204,6 @@ function VideoDetailItem({ item, index, isFocused, shouldLoadSource, containerHe
   const playingStartRef = useRef<number | null>(null);
   const inflightPingRef = useRef<boolean>(false);
   const [isVideoLoading, setIsVideoLoading] = useState<boolean>(false);
-  const [videoUri, setVideoUri] = useState<string | null>(null);
   const [commentsVisible, setCommentsVisible] = useState(false);
   const [reportVisible, setReportVisible] = useState(false);
   const [reportVideoId, setReportVideoId] = useState<number | null>(null);
@@ -220,7 +219,6 @@ function VideoDetailItem({ item, index, isFocused, shouldLoadSource, containerHe
   const [positionMs, setPositionMs] = useState(0);
   const [durationMs, setDurationMs] = useState(1);
   const [isSeeking, setIsSeeking] = useState(false);
-  const [authToken, setAuthToken] = useState<string | null>(null);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [confirmTitle, setConfirmTitle] = useState<string | undefined>(undefined);
   const [confirmMessage, setConfirmMessage] = useState<string | undefined>(undefined);
@@ -252,46 +250,10 @@ function VideoDetailItem({ item, index, isFocused, shouldLoadSource, containerHe
   }, [item.id, registerPlayer, videoRef]);
 
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const t = await getToken();
-        if (mounted) setAuthToken(t ?? null);
-      } catch (e) {}
-    })();
-    return () => { mounted = false; };
-  }, [item.id]);
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        if (!item || !item.filename) return;
-        const uri = await import('../lib/videoCache').then(m => m.getPlayableUri(item.filename));
-        if (mounted) setVideoUri(uri);
-      } catch (e) {
-        try { console.warn('video cache failed', e); } catch (e2) {}
-      }
-    })();
-    return () => { mounted = false; };
-  }, [item?.filename, authToken]);
-
-  useEffect(() => {
     try {
       if (item && item.id && isFocused) pauseAllExcept(item.id);
     } catch (e) {}
   }, [item, isFocused]);
-
-  useEffect(() => {
-    if (isFocused && videoUri && videoRef.current) {
-      try {
-        const player: any = videoRef.current;
-        if (typeof player.playAsync === 'function') {
-          player.playAsync().catch(() => {});
-        }
-      } catch (e) {}
-    }
-  }, [isFocused, videoUri]);
 
   useEffect(() => {
     return () => {
@@ -457,10 +419,9 @@ function VideoDetailItem({ item, index, isFocused, shouldLoadSource, containerHe
   }, [item]);
 
   const resolvedSourceUri = useMemo(() => {
-    if (videoUri) return videoUri;
     const base = (apiClient.API_BASE_URL || '').replace(/\/$/, '');
     return item?.filename ? `${base}/video/${item.filename}` : undefined;
-  }, [videoUri, item?.filename]);
+  }, [item?.filename]);
 
   return (
     <View style={[styles.container, { height: containerHeight }]}>
@@ -815,7 +776,7 @@ export default function FeedScreen() {
       item={item}
       index={index}
       isFocused={(index === currentIndex) && isScreenFocused}
-      shouldLoadSource={Math.abs(index - currentIndex) <= 1}
+      shouldLoadSource={isScreenFocused && Math.abs(index - currentIndex) <= 1}
       containerHeight={containerHeight}
       onToggleLike={(id:number) => { try { handleToggleLike(id); } catch (e) {} }}
       onToggleDislike={(id:number) => { try { handleToggleDislike(id); } catch (e) {} }}
@@ -839,6 +800,10 @@ export default function FeedScreen() {
       offset: containerHeight * index,
       index,
     })}
+    initialNumToRender={2}
+    maxToRenderPerBatch={2}
+    windowSize={3}
+    removeClippedSubviews={true}
     refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => fetchVideos()} colors={["#FF4500"]} progressBackgroundColor="#000" />}
     />
     </View>

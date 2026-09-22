@@ -22,7 +22,7 @@ export const options = {
   headerShown: false,
 };
 
-function VideoDetailItem({ item, isFocused, containerHeight, onDownload, onCommentsUpdated }: any) {
+function VideoDetailItem({ item, isFocused, shouldLoadSource, containerHeight, onDownload, onCommentsUpdated }: any) {
   const { forcePlay } = item || {};
   const { user: authUser } = useContext(AuthContext);
   const router = useRouter();
@@ -34,7 +34,6 @@ function VideoDetailItem({ item, isFocused, containerHeight, onDownload, onComme
   const playingStartRef = useRef<number | null>(null);
   const inflightPingRef = useRef<boolean>(false);
   const [isVideoLoading, setIsVideoLoading] = useState<boolean>(false);
-  const [videoUri, setVideoUri] = useState<string | null>(null);
   const [commentsVisible, setCommentsVisible] = useState(false);
   const [reportVisible, setReportVisible] = useState(false);
   const [reportInitialText, setReportInitialText] = useState<string | undefined>(undefined);
@@ -76,35 +75,10 @@ function VideoDetailItem({ item, isFocused, containerHeight, onDownload, onComme
   }, [item.id]);
 
   useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        if (!item || !item.filename) return;
-        const uri = await import('../lib/videoCache').then(m => m.getPlayableUri(item.filename));
-        if (mounted) setVideoUri(uri);
-      } catch (e) {
-        try { console.warn('video cache failed', e); } catch (e2) {}
-      }
-    })();
-    return () => { mounted = false; };
-  }, [item?.filename, authToken]);
-
-  useEffect(() => {
     try {
       if (item && item.id) pauseAllExcept(item.id);
     } catch (e) {}
   }, [item]);
-
-  useEffect(() => {
-    if (isFocused && videoUri && videoRef.current) {
-      try {
-        const player: any = videoRef.current;
-        if (typeof player.playAsync === 'function') {
-          player.playAsync().catch(() => {});
-        }
-      } catch (e) {}
-    }
-  }, [isFocused, videoUri]);
 
   function handleLongPress() {
     try {
@@ -133,15 +107,6 @@ function VideoDetailItem({ item, isFocused, containerHeight, onDownload, onComme
       }
     } catch (e) {}
   }
-
-  useEffect(() => {
-    if (videoUri && videoRef.current && (item?.forcePlay === true || item?.initialPlay === '1')) {
-      try {
-        const player: any = videoRef.current;
-        if (typeof player.playAsync === 'function') player.playAsync().catch(() => {});
-      } catch (e) {}
-    }
-  }, [videoUri, item?.forcePlay, item?.initialPlay]);
 
   useEffect(() => {
     return () => {
@@ -319,11 +284,11 @@ function VideoDetailItem({ item, isFocused, containerHeight, onDownload, onComme
     <View style={[styles.container, { height: containerHeight }]}>
       <VideoPlayer
         id={item.id}
-        source={{ uri: videoUri || (() => {
+        source={shouldLoadSource ? { uri: (() => {
           const base = (apiClient.API_BASE_URL || '').replace(/\/$/, '');
           return `${base}/video/${item.filename}`;
-        })() }}
-        shouldPlay={isFocused}
+        })() } : undefined}
+        shouldPlay={isFocused && shouldLoadSource}
         onDoubleTap={handleToggleLike}
         onTap={() => setShowProgress(prev => !prev)}
         onProgressUpdate={(pos, dur) => { if (!isSeeking) { setPositionMs(pos); setDurationMs(dur); } }}
@@ -614,6 +579,7 @@ export default function SingleVideoScreen() {
         <VideoDetailItem
           item={item}
           isFocused={index === currentIndex}
+          shouldLoadSource={Math.abs(index - currentIndex) <= 1}
           containerHeight={containerHeight}
           onDownload={handleDownload}
           onCommentsUpdated={handleCommentsUpdated}
@@ -633,6 +599,10 @@ export default function SingleVideoScreen() {
         offset: containerHeight * index,
         index,
       })}
+      initialNumToRender={2}
+      maxToRenderPerBatch={2}
+      windowSize={3}
+      removeClippedSubviews={true}
     />
   );
 }
