@@ -1,60 +1,61 @@
-import React, { useState } from 'react';
-import { SafeAreaView, StyleSheet, StatusBar, View, Text, TouchableOpacity } from 'react-native';
+import React, { useContext } from 'react';
+import { ActivityIndicator, View, StyleSheet } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { AuthProvider, AuthContext } from '../lib/auth';
 import AuthScreen from './AuthScreen';
+import GoTunesScreen from './GoTunesScreen';
+import GoStoreScreen from './GoStoreScreen';
 
-export default function App() {
-  const [user, setUser] = useState(null);
+const Tab = createBottomTabNavigator();
 
-  const handleLoginSuccess = (userData) => {
-    setUser(userData);
-  };
+function MainTabs() {
+  return (
+    <Tab.Navigator
+      screenOptions={{
+        headerShown: false,
+        tabBarStyle: { backgroundColor: '#0b0c10', borderTopColor: '#232533' },
+        tabBarActiveTintColor: '#00d2ff',
+        tabBarInactiveTintColor: '#8a8d9b',
+      }}
+    >
+      <Tab.Screen name="goTunes" component={GoTunesScreen} />
+      <Tab.Screen name="goStore" component={GoStoreScreen} />
+    </Tab.Navigator>
+  );
+}
 
-  const handleLogout = () => {
-    setUser(null);
-  };
+function MainNavigator() {
+  const { token, loading } = useContext(AuthContext);
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#00d2ff" />
+      </View>
+    );
+  }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#121212" />
-      {user ? (
-        <View style={styles.mainApp}>
-          <Text style={styles.welcomeText}>Welcome to goTunes, {user.username}!</Text>
-          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-            <Text style={styles.logoutText}>Log Out</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <AuthScreen onLoginSuccess={handleLoginSuccess} />
-      )}
-    </SafeAreaView>
+    <NavigationContainer>
+      {!token ? <AuthScreen /> : <MainTabs />}
+    </NavigationContainer>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <MainNavigator />
+    </AuthProvider>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#121212',
-  },
-  mainApp: {
+  center: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-  },
-  welcomeText: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 20,
-  },
-  logoutBtn: {
-    backgroundColor: '#282828',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 20,
-  },
-  logoutText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
+    backgroundColor: '#0b0c10',
   },
 });

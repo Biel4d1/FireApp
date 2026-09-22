@@ -1,10 +1,12 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { AuthContext } from "../lib/auth";
+import React, { useContext, useState, useEffect, useRef } from 'react';
 import { StyleSheet, Text, View, TextInput, TouchableOpacity, FlatList, ActivityIndicator, SafeAreaView, StatusBar } from 'react-native';
 import { Audio } from 'expo-av';
 
 const API_BASE = 'https://api.smartvideos.lat';
 
-export default function GoTunesScreen({ token, setToken }) {
+export default function GoTunesScreen() {
+  const { logout, token } = useContext(AuthContext);
   const [tracks, setTracks] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(false);
@@ -122,7 +124,7 @@ export default function GoTunesScreen({ token, setToken }) {
       <StatusBar barStyle="light-content" backgroundColor="#0b0c10" />
       <View style={styles.header}>
         <Text style={styles.title}>goTunes</Text>
-        <TouchableOpacity style={styles.logoutBtn} onPress={() => setToken(null)}>
+        <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
           <Text style={styles.btnTextLight}>Logout</Text>
         </TouchableOpacity>
       </View>

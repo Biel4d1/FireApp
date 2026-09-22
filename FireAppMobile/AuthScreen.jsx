@@ -1,4 +1,4 @@
-import { AuthContext } from "../lib/auth";
+import { AuthContext } from "./auth";
 import React, { useState, useContext } from 'react';
 import {
   StyleSheet,
@@ -17,7 +17,7 @@ const API_BASE = 'https://api.smartvideos.lat';
 
 export default function AuthScreen() {
   const { login } = useContext(AuthContext);
-  const [activeTab, setActiveTab] = useState('login'); // 'login' | 'signup'
+  const [activeTab, setActiveTab] = useState('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -44,7 +44,6 @@ export default function AuthScreen() {
 
       if (res.ok) {
         if (activeTab === 'signup') {
-          // Auto-login after signup
           await handleAutoLogin(username, password);
         } else if (data.token) {
           await login(data.token);
@@ -93,7 +92,6 @@ export default function AuthScreen() {
           </Text>
         </View>
 
-        {/* Tab Switcher */}
         <View style={styles.tabRow}>
           <TouchableOpacity
             style={[styles.tab, activeTab === 'login' && styles.tabActive]}
@@ -115,7 +113,6 @@ export default function AuthScreen() {
           </View>
         ) : null}
 
-        {/* Form Inputs */}
         <View style={styles.form}>
           <TextInput
             style={styles.input}

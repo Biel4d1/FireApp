@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "icon": "./assets/go.jpg",
+    "icon": "./assets/go.png",
     "splash": {
       "backgroundColor": "#0b0c10"
     },
@@ -19,7 +19,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/go.jpg",
+        "foregroundImage": "./assets/go.png",
         "backgroundColor": "#0b0c10"
       },
       "package": "com.fireapp.goland",
@@ -51,7 +51,8 @@
         {
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-secure-store"
     ]
   }
 }
