@@ -238,7 +238,7 @@ export async function deleteAccount(password: string) {
 export async function searchContent(query: string) {
   try {
     const token = await getToken();
-    const baseURL = (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000').replace(/\/$/, '');
+    const baseURL = (API_BASE_URL || '').replace(/\/$/, '');
     const res = await fetch(`${baseURL}/search?q=${encodeURIComponent(query)}`, {
       method: 'GET',
       headers: {
