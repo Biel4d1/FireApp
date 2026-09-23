@@ -284,6 +284,7 @@ function VideoDetailItem({ item, isFocused, shouldLoadSource, containerHeight, o
     <View style={[styles.container, { height: containerHeight }]}>
       <VideoPlayer
         id={item.id}
+        playerRef={videoRef}
         source={shouldLoadSource ? { uri: (() => {
           const base = (apiClient.API_BASE_URL || '').replace(/\/$/, '');
           return `${base}/video/${item.filename}`;

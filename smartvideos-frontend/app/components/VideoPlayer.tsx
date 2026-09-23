@@ -24,7 +24,7 @@ type Props = {
   onToggleControls?: () => void;
 };
 
-export default function VideoPlayer({ id, source, posterSource, style, shouldPlay = false, isMuted = false, progressUpdateIntervalMillis = 500, onPlaybackStatusUpdate, onReady, onPress, onLongPress, onTap, onDoubleTap, onUserToggle, playerRef }: Props) {
+export default function VideoPlayer({ id, source, posterSource, style, shouldPlay = false, isMuted = false, progressUpdateIntervalMillis = 500, onPlaybackStatusUpdate, onReady, onPress, onLongPress, onTap, onDoubleTap, onUserToggle, playerRef, onProgressUpdate }: Props) {
   const internalRef = useRef<any>(null);
   const [userPaused, setUserPaused] = useState(false);
   const lastTapRef = useRef<number>(0);
@@ -34,10 +34,14 @@ export default function VideoPlayer({ id, source, posterSource, style, shouldPla
   const accumulatedMsRef = useRef<number>(0);
   const lastPingMsRef = useRef<number>(0);
   const inflightPingRef = useRef<boolean>(false);
+  const startInProgressRef = useRef(false);
 
   // expose internal ref to parent if requested
   useEffect(() => {
     if (playerRef) playerRef.current = internalRef.current;
+    return () => {
+      if (playerRef) playerRef.current = null;
+    };
   }, [playerRef]);
 
   // Cleanup timer on unmount
@@ -88,14 +92,7 @@ export default function VideoPlayer({ id, source, posterSource, style, shouldPla
             } catch (e) {}
           })();
         } else if (nextAppState === 'active') {
-          // When returning to the foreground, avoid auto-playing videos unexpectedly.
-          try {
-            setUserPaused(true);
-          } catch (e) {}
-          try {
-            const p = internalRef.current;
-            if (p && typeof p.pauseAsync === 'function') p.pauseAsync().catch(() => {});
-          } catch (e) {}
+          // Let the focused player resume from its shouldPlay prop.
         }
       } catch (e) {}
     };
@@ -104,7 +101,7 @@ export default function VideoPlayer({ id, source, posterSource, style, shouldPla
     return () => {
       try {
         if (sub && typeof sub.remove === 'function') sub.remove();
-        else if (AppState.removeEventListener) AppState.removeEventListener('change', handler as any);
+        else if ((AppState as any).removeEventListener) (AppState as any).removeEventListener('change', handler as any);
       } catch (e) {}
     };
   }, []);
@@ -201,9 +198,76 @@ export default function VideoPlayer({ id, source, posterSource, style, shouldPla
     }
   }, [isMuted]);
 
+  const startFromBeginning = useCallback(async () => {
+    const player = internalRef.current;
+    if (!player || startInProgressRef.current) return false;
+    startInProgressRef.current = true;
+    try {
+      if (typeof player.setPositionAsync === 'function') {
+        await player.setPositionAsync(0);
+      }
+      if (typeof player.playAsync === 'function') {
+        await player.playAsync();
+      }
+      return true;
+    } catch (e) {
+      // Native playback can reject while a recycled player is unloading.
+      return false;
+    } finally {
+      startInProgressRef.current = false;
+    }
+  }, []);
+
+  const wasPlayingRef = useRef(false);
+  const sourceUri = source?.uri;
+  useEffect(() => {
+    wasPlayingRef.current = false;
+    startInProgressRef.current = false;
+    setUserPaused(false);
+  }, [sourceUri]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const syncPlayback = async () => {
+      const player = internalRef.current;
+      if (!player) return;
+
+      if (!shouldPlay) {
+        wasPlayingRef.current = false;
+        try { if (typeof player.pauseAsync === 'function') await player.pauseAsync(); } catch (e) {}
+        try { if (typeof player.setPositionAsync === 'function') await player.setPositionAsync(0); } catch (e) {}
+        return;
+      }
+
+      if (wasPlayingRef.current || cancelled) return;
+      setUserPaused(false);
+      let attempts = 0;
+      const retryStart = async () => {
+        if (cancelled || !shouldPlay) return;
+        attempts += 1;
+        const started = await startFromBeginning();
+        if (started) {
+          wasPlayingRef.current = true;
+        } else if (attempts < 8 && !cancelled && shouldPlay) {
+          retryTimer = setTimeout(() => { retryStart().catch(() => {}); }, 100);
+        }
+      };
+      retryStart().catch(() => {});
+    };
+
+    syncPlayback().catch(() => {});
+    return () => {
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [shouldPlay, sourceUri, startFromBeginning]);
+
   return (
     <Pressable style={[styles.container, style]} onPress={handlePress} onLongPress={onLongPress ?? undefined}>
       {source && <Video
+        key={sourceUri}
         ref={internalRef}
         style={StyleSheet.absoluteFill}
         resizeMode={ResizeMode.CONTAIN}
@@ -254,10 +318,9 @@ export default function VideoPlayer({ id, source, posterSource, style, shouldPla
         }}
         onLoad={() => {
           try { 
+            if (playerRef) playerRef.current = internalRef.current;
             if (shouldPlay && !userPaused && internalRef.current) {
-              if (typeof internalRef.current.playAsync === 'function') {
-                internalRef.current.playAsync().catch(() => {});
-              }
+              startFromBeginning().catch(() => {});
             }
             if (onReady) onReady(); 
           } catch (e) {} 

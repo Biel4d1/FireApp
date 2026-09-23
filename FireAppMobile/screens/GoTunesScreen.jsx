@@ -1,6 +1,6 @@
 import { AuthContext } from "../lib/auth";
 import React, { useContext, useState, useEffect, useRef } from "react";
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, FlatList, ActivityIndicator, SafeAreaView, StatusBar } from "react-native";
+import { StyleSheet, Text, View, TextInput, TouchableOpacity, FlatList, ActivityIndicator, SafeAreaView, StatusBar, PanResponder } from "react-native";
 import { Audio } from "expo-av";
 
 const API_BASE = "https://api.smartvideos.lat";
@@ -13,9 +13,53 @@ export default function GoTunesScreen() {
   const [sound, setSound] = useState(null);
   const [activeTrack, setActiveTrack] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [positionMillis, setPositionMillis] = useState(0);
+  const [durationMillis, setDurationMillis] = useState(1);
 
+  const soundRef = useRef(null);
+  const durationRef = useRef(1);
+  const trackWidthRef = useRef(1);
+  const isSeekingRef = useRef(false);
   const listenStartRef = useRef(0);
   const activeVideoIdRef = useRef(null);
+
+  const formatTime = (milliseconds) => {
+    const totalSeconds = Math.max(0, Math.floor((milliseconds || 0) / 1000));
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = String(totalSeconds % 60).padStart(2, "0");
+    return `${minutes}:${seconds}`;
+  };
+
+  const updateSeekPosition = (locationX) => {
+    const ratio = Math.max(0, Math.min(1, locationX / trackWidthRef.current));
+    setPositionMillis(ratio * durationRef.current);
+  };
+
+  const seekPanResponder = useRef(PanResponder.create({
+    onStartShouldSetPanResponder: () => Boolean(soundRef.current),
+    onMoveShouldSetPanResponder: () => Boolean(soundRef.current),
+    onPanResponderGrant: (event) => {
+      isSeekingRef.current = true;
+      updateSeekPosition(event.nativeEvent.locationX);
+    },
+    onPanResponderMove: (event) => updateSeekPosition(event.nativeEvent.locationX),
+    onPanResponderRelease: async (event) => {
+      updateSeekPosition(event.nativeEvent.locationX);
+      const ratio = Math.max(0, Math.min(1, event.nativeEvent.locationX / trackWidthRef.current));
+      try {
+        if (soundRef.current && typeof soundRef.current.setPositionAsync === "function") {
+          await soundRef.current.setPositionAsync(ratio * durationRef.current);
+        }
+      } catch (e) {
+        console.warn("Audio seek failed:", e);
+      } finally {
+        isSeekingRef.current = false;
+      }
+    },
+    onPanResponderTerminate: () => {
+      isSeekingRef.current = false;
+    },
+  })).current;
 
   const getTrackTitle = (track) => {
     if (!track) return "";
@@ -83,13 +127,25 @@ export default function GoTunesScreen() {
         { uri: `${API_BASE}/${track.mp3_path}` },
         { shouldPlay: true }
       );
+      soundRef.current = newSound;
       setSound(newSound);
       setActiveTrack(track);
       setIsPlaying(true);
+      setPositionMillis(0);
+      setDurationMillis(1);
+      durationRef.current = 1;
       activeVideoIdRef.current = track.id;
       listenStartRef.current = Date.now();
 
       newSound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded) {
+          if (status.durationMillis) {
+            durationRef.current = status.durationMillis;
+            if (!isSeekingRef.current) setDurationMillis(status.durationMillis);
+          }
+          if (!isSeekingRef.current) setPositionMillis(status.positionMillis || 0);
+          setIsPlaying(Boolean(status.isPlaying));
+        }
         if (status.didJustFinish) { setIsPlaying(false); recordListenDuration(); }
       });
     } catch (error) { console.error("Audio Playback Error:", error); }
@@ -167,13 +223,28 @@ export default function GoTunesScreen() {
 
       {activeTrack && (
         <View style={styles.playerBar}>
-          <View style={{ flex: 1 }}>
+            <View style={styles.playerInfo}>
             <Text style={styles.playerTitle} numberOfLines={1}>{getTrackTitle(activeTrack)}</Text>
             <Text style={styles.playerSub}>Track #{activeTrack.id}</Text>
           </View>
-          <TouchableOpacity style={styles.controlBtn} onPress={togglePlayPause}>
-            <Text style={styles.controlBtnText}>{isPlaying ? "Pause" : "Play"}</Text>
-          </TouchableOpacity>
+            <View style={styles.timelineBlock}>
+              <View
+                style={styles.progressTrack}
+                hitSlop={10}
+                onLayout={(event) => { trackWidthRef.current = Math.max(1, event.nativeEvent.layout.width); }}
+                {...seekPanResponder.panHandlers}
+              >
+                <View style={[styles.progressFill, { width: `${durationMillis ? Math.min(100, (positionMillis / durationMillis) * 100) : 0}%` }]} />
+                <View style={[styles.progressThumb, { left: `${durationMillis ? Math.min(100, (positionMillis / durationMillis) * 100) : 0}%` }]} />
+              </View>
+              <View style={styles.timeRow}>
+                <Text style={styles.timeText}>{formatTime(positionMillis)}</Text>
+                <Text style={styles.timeText}>{formatTime(durationMillis)}</Text>
+              </View>
+            </View>
+            <TouchableOpacity style={styles.controlBtn} onPress={togglePlayPause}>
+              <Text style={styles.controlBtnText}>{isPlaying ? "Pause" : "Play"}</Text>
+            </TouchableOpacity>
         </View>
       )}
     </SafeAreaView>
@@ -195,8 +266,15 @@ const styles = StyleSheet.create({
   cardTags: { color: "#00d2ff", fontSize: 11, marginTop: 4 },
   playIndicator: { fontSize: 16, fontWeight: "bold", color: "#8a8d9b", marginLeft: 10 },
   playerBar: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "#15161e", borderTopWidth: 1, borderColor: "#232533", padding: 16, flexDirection: "row", alignItems: "center" },
+  playerInfo: { flex: 1, minWidth: 0, marginRight: 12 },
   playerTitle: { color: "#fff", fontWeight: "bold", fontSize: 14 },
   playerSub: { color: "#8a8d9b", fontSize: 12 },
+  timelineBlock: { flex: 2, marginRight: 12 },
+  progressTrack: { height: 4, borderRadius: 2, backgroundColor: "#3a3d4a", position: "relative", justifyContent: "center" },
+  progressFill: { position: "absolute", left: 0, top: 0, bottom: 0, borderRadius: 2, backgroundColor: "#00d2ff" },
+  progressThumb: { position: "absolute", top: -4, width: 12, height: 12, marginLeft: -6, borderRadius: 6, backgroundColor: "#00d2ff" },
+  timeRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 5 },
+  timeText: { color: "#8a8d9b", fontSize: 10, fontVariant: ["tabular-nums"] },
   controlBtn: { backgroundColor: "#00d2ff", paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8 },
   controlBtnText: { color: "#000", fontWeight: "bold", fontSize: 12 }
 });
