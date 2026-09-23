@@ -407,42 +407,73 @@ func deleteAccountHandler(c *gin.Context) {
 		return
 	}
 
-	var profilePicUrl sql.NullString
-	db.QueryRow("SELECT profile_pic_url FROM users WHERE id = $1", userID).Scan(&profilePicUrl)
-	if profilePicUrl.Valid && profilePicUrl.String != "" {
-		os.Remove(formatUploadPath(profilePicUrl.String))
+	var profilePicURL sql.NullString
+	if err := db.QueryRow("SELECT profile_pic_url FROM users WHERE id = $1", userID).Scan(&profilePicURL); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		return
 	}
 
+	type uploadPath struct {
+		video, thumbnail, audio string
+	}
+	var files []uploadPath
 	rows, err := db.Query(`
-		SELECT v.id, v.filename, COALESCE(v.thumbnail, ), COALESCE(af.mp3_path, )
+		SELECT v.filename, COALESCE(v.thumbnail, ''), COALESCE(af.mp3_path, '')
 		FROM videos v
 		LEFT JOIN video_audio_features af ON v.id = af.video_id
 		WHERE v.uploader_id = $1
 	`, userID)
-
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var vid int
-			var filename, thumbnail, mp3Path string
-			if err := rows.Scan(&vid, &filename, &thumbnail, &mp3Path); err == nil {
-				if filename != "" {
-					os.Remove(filepath.Join("uploads", "videos", filename))
-				}
-				if thumbnail != "" {
-					os.Remove(formatUploadPath(thumbnail))
-				}
-				if mp3Path != "" {
-					os.Remove(formatUploadPath(mp3Path))
-				}
-			}
-		}
-	}
-
-	_, err = db.Exec("DELETE FROM users WHERE id = $1", userID)
 	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to find user uploads: %v", err)})
+		return
+	}
+	for rows.Next() {
+		var file uploadPath
+		if err := rows.Scan(&file.video, &file.thumbnail, &file.audio); err != nil {
+			rows.Close()
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to read user uploads: %v", err)})
+			return
+		}
+		files = append(files, file)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to read user uploads: %v", err)})
+		return
+	}
+	rows.Close()
+
+	tx, err := db.Begin()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("db transaction error: %v", err)})
+		return
+	}
+	if _, err = tx.Exec("DELETE FROM videos WHERE uploader_id = $1", userID); err == nil {
+		_, err = tx.Exec("DELETE FROM users WHERE id = $1", userID)
+	}
+	if err != nil {
+		_ = tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("db error: %v", err)})
 		return
+	}
+	if err = tx.Commit(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("db commit error: %v", err)})
+		return
+	}
+
+	if profilePicURL.Valid && profilePicURL.String != "" {
+		_ = os.Remove(formatUploadPath(profilePicURL.String))
+	}
+	for _, file := range files {
+		if file.video != "" {
+			_ = os.Remove(filepath.Join("uploads", "videos", file.video))
+		}
+		if file.thumbnail != "" {
+			_ = os.Remove(formatUploadPath(file.thumbnail))
+		}
+		if file.audio != "" {
+			_ = os.Remove(formatUploadPath(file.audio))
+		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "account and all associated files deleted successfully"})
@@ -535,7 +566,7 @@ SELECT
   ) AS weighted_score,
   (COALESCE(v.likes_count, 0) + COALESCE(COUNT(DISTINCT c.id), 0)) AS global_popularity
 FROM videos v
-LEFT JOIN users u ON v.uploader_id = u.id
+JOIN users u ON v.uploader_id = u.id
 LEFT JOIN video_audio_features af_v ON v.id = af_v.video_id
 LEFT JOIN comments c ON v.id = c.video_id
 LEFT JOIN (SELECT video_id, MAX(watch_time_ms) AS max_w FROM interactions GROUP BY video_id) AS max_watch ON max_watch.video_id = v.id
@@ -1167,7 +1198,7 @@ func searchHandler(c *gin.Context) {
 			       v.uploader_id, COALESCE(u.username, 'Unknown'), COALESCE(u.profile_pic_url, ''), 
 			       COALESCE(v.tags, ''), COALESCE(v.likes_count, 0)
 			FROM videos v
-			LEFT JOIN users u ON v.uploader_id = u.id
+			JOIN users u ON v.uploader_id = u.id
 			WHERE (v.is_published IS TRUE OR v.is_published IS NULL)
 			ORDER BY (v.embedding <-> $1::vector) - (CASE WHEN v.tags ILIKE $2 OR v.description ILIKE $2 OR u.username ILIKE $2 OR v.song_title ILIKE $2 OR v.song_artist ILIKE $2 THEN 0.3 ELSE 0.0 END) ASC
 			LIMIT 30
@@ -1178,7 +1209,7 @@ func searchHandler(c *gin.Context) {
 			       v.uploader_id, COALESCE(u.username, 'Unknown'), COALESCE(u.profile_pic_url, ''), 
 			       COALESCE(v.tags, ''), COALESCE(v.likes_count, 0)
 			FROM videos v
-			LEFT JOIN users u ON v.uploader_id = u.id
+			JOIN users u ON v.uploader_id = u.id
 			WHERE (v.tags ILIKE $1 OR v.description ILIKE $1 OR u.username ILIKE $1 OR v.song_title ILIKE $1 OR v.song_artist ILIKE $1) AND (v.is_published IS TRUE OR v.is_published IS NULL)
 			ORDER BY 
     (CASE WHEN v.song_title ILIKE $1 THEN 0 WHEN v.tags ILIKE $1 THEN 1 WHEN v.description ILIKE $1 THEN 2 ELSE 3 END) ASC, 
@@ -1346,7 +1377,7 @@ func audioRecommendationsHandler(c *gin.Context) {
 		       COALESCE(v.song_artist, '') AS song_artist
 		FROM videos v
 		LEFT JOIN video_audio_features af ON v.id = af.video_id
-		LEFT JOIN users u ON v.uploader_id = u.id
+		JOIN users u ON v.uploader_id = u.id
 		WHERE (v.is_published IS TRUE OR v.is_published IS NULL)
 		ORDER BY audio_distance ASC
 		LIMIT 10
